@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Building Data Analyzer</title>
+    <!-- Plotly.js via CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js" charset="utf-8"></script>
+    <!-- PapaParse for CSV parsing via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <!-- SheetJS (xlsx.js) for Excel parsing via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; color: #333; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #fff; box-shadow: 0 0 15px rgba(0,0,0,0.1); border-radius: 8px; }
+        header { background-color: #005792; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        header h1 { margin: 0; }
+        nav { display: flex; justify-content: center; background-color: #007bff; padding: 10px; }
+        nav button { background-color: #007bff; color: white; border: none; padding: 10px 20px; margin: 0 5px; cursor: pointer; font-size: 16px; border-radius: 4px; }
+        nav button:hover, nav button.active { background-color: #0056b3; }
+        .page { display: none; padding: 20px; border: 1px solid #ddd; margin-top:10px; border-radius: 5px;}
+        .page.active { display: block; }
+        h2 { color: #005792; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+        h3 { color: #007bff; margin-top: 20px; }
+        .explanation {
+            background-color: #e9f5ff;
+            border-left: 5px solid #007bff;
+            padding: 20px; /* Increased padding */
+            margin: 20px 0; /* Increased margin */
+            border-radius: 4px;
+            font-size: 0.98em; /* Slightly adjusted font size */
+            line-height: 1.6; /* Improved line height */
+        }
+        .explanation p {
+            margin: 10px 0; /* Adjusted paragraph spacing */
+        }
+        .explanation code, .inline-code { /* Combined and enhanced */
+            background-color: #ddeeff; /* Lighter blueish background */
+            padding: 3px 6px; /* Adjusted padding */
+            border-radius: 4px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.9em;
+            border: 1px solid #c0d9ec; /* Subtle border */
+        }
+        .explanation ul, .explanation ol {
+            margin-left: 20px; /* Indent lists */
+            padding-left: 15px; /* Padding for list items */
+        }
+        .explanation li {
+            margin-bottom: 8px; /* Space between list items */
+        }
+        .explanation h4 {
+            margin-top: 15px;
+            margin-bottom: 5px;
+            color: #005792;
+        }
+        .config-section, .wizard-step { margin-bottom: 25px; padding: 15px; border: 1px solid #e0e0e0; border-radius: 5px; background-color: #f9f9f9;}
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        select, input[type="number"], input[type="text"], input[type="datetime-local"], input[type="file"] {
+            width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+        }
+        .slider-container { margin-bottom: 15px; }
+        .slider-container label { display: block; margin-bottom: 5px; }
+        .slider-container input[type="range"] { width: 80%; }
+        .slider-container span { margin-left: 10px; font-style: italic; }
+        button.action-button { background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button.action-button:hover { background-color: #218838; }
+        .chart-container { width: 100%; min-height: 400px; margin-top: 20px; border: 1px solid #eee; padding:10px; border-radius: 5px;}
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top:15px; }
+        .metric { padding: 15px; background-color: #f0f8ff; border: 1px solid #cce0ff; border-radius: 5px; text-align: center; }
+        .metric h4 { margin-top: 0; color: #005792; }
+        .metric .value { font-size: 1.8em; font-weight: bold; }
+        .metric .delta { font-size: 1em; }
+        .metric .delta.positive { color: #dc3545; } /* Red for increase if it's bad */
+        .metric .delta.negative { color: #28a745; } /* Green for decrease if it's good */
+        .metric .caption { font-size: 0.8em; color: #666; margin-top:5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #e9ecef; }
+        .tab-content { display: none; } /* For analysis category tabs */
+        .tab-content.active { display: block; }
+        .tabs button { background-color: #f0f0f0; border: 1px solid #ccc; padding: 8px 12px; cursor: pointer; }
+        .tabs button.active { background-color: #007bff; color: white; }
+        .tooltip { position: relative; display: inline-block; cursor: help; }
+        .tooltip .tooltiptext { visibility: hidden; width: 250px; background-color: #555; color: #fff; text-align: left; border-radius: 6px; padding: 8px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -125px; opacity: 0; transition: opacity 0.3s; font-size: 0.9em;}
+        .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Interactive Building Performance Analyzer</h1>
+    </header>
+
+    <div class="container">
+        <nav id="mainNav">
+            <button data-page="about">About</button>
+            <button data-page="welcome">Welcome</button>
+            <button data-page="dataUpload">1. Upload Data</button>
+            <button data-page="columnWizard">2. Map Columns</button>
+            <button data-page="configureAnalysis">3. Configure Analysis</button>
+            <button data-page="results">4. View Results</button>
+        </nav>
+
+        <div id="about" class="page">
+            <h2>About This Tool</h2>
+            <div class="explanation">
+                <p>This Interactive Building Performance Analyzer is built by Max Berggren (Data Scientist and Energy Engineer). The primary goal is to provide the most fair and transparent comparison tool available for accurately determining the real impact of upgrades or control strategy changes made to your building systems.</p>
+                <p>Understanding the true effect of an investment, like new windows or an optimized control algorithm, can be challenging due to many confounding factors, especially weather variations. This tool aims to cut through that noise by normalizing data and applying clear, pedagogical analysis methods.</p>
+                <p>This tool is the current workhorse powering all impact analytics on building energy performance conducted by Myrspoven AB in Stockholm. We are making it open and available because we believe this methodology offers a significantly more robust and accurate approach compared to traditional methods like 'heat load signatures' or 'degree-day corrections'.</p>
+                <h4>Open Source and Community</h4>
+                <p>This tool is fully open source! We believe in transparency and collaborative improvement. Contributions, suggestions, and feedback are highly encouraged. You can find the project and contribute on <a href="https://github.com" target="_blank">GitHub</a></p>
+            </div>
+        </div>
+
+        <div id="welcome" class="page active">
+            <h2>Welcome to the Interactive Building Performance Analyzer!</h2>
+            <p>This tool helps you analyze time-series data from your building systems to understand performance, particularly the impact of control strategies.</p>
+            <p><strong>How it works:</strong></p>
+            <ol>
+                <li><strong>Upload Your Data:</strong> Provide a CSV or Excel file containing your building's operational data (timestamps, sensor readings, control signals).</li>
+                <li><strong>Map Columns:</strong> Tell the tool which columns in your file correspond to key data points like outdoor temperature, the main control signal you want to analyze, and other relevant sensor signals.</li>
+                <li><strong>Configure Analysis:</strong> Set filters for date ranges, outdoor temperature, hour of the day, and define how the "ON" and "OFF" states of your control signal are determined.</li>
+                <li><strong>View Results:</strong> Explore interactive charts and detailed textual explanations that quantify the impact of your control strategy under various conditions.</li>
+            </ol>
+
+            <h2>Motivation</h2>
+            <div class="explanation">
+                <p>Analyzing building performance data, especially when comparing different time periods like months or years, can be tricky. Why? Because the weather can be vastly different! One year might be significantly colder or warmer than another, sometimes by as much as 30% in terms of heating or cooling demand.</p>
+                <p>Imagine you've invested in new, energy-efficient windows for your building. You'd expect your energy bills to go down. However, if the following year turns out to be much colder than the previous one, you might be surprised to see higher energy consumption despite the new windows. This doesn't necessarily mean the windows aren't working; the weather variation is masking their positive impact.</p>
+                <p>This tool helps you overcome this challenge. By normalizing data against outdoor temperature and other relevant factors, it allows for a fairer and more accurate comparison of your building's performance and the effectiveness of any changes or control strategies you've implemented. It helps you see the true impact, beyond the weather.</p>
+            </div>
+
+            <p>This tool is designed to be highly pedagogical. Each step and analysis method is explained in detail, helping you understand not just the "what" but also the "how" and "why" of the analysis.</p>
+            <p>Click "Next" or select a step from the navigation above to begin.</p>
+            <button class="action-button" onclick="navigateToPage('dataUpload')">Start Analysis</button>
+        </div>
+
+        <div id="dataUpload" class="page">
+            <h2>1. Upload Your Data</h2>
+            <div class="config-section">
+                <label for="fileInput">Select your CSV or Excel file:</label>
+                <input type="file" id="fileInput" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel">
+                <div class="explanation">
+                    <p><strong>Data Format Requirements:</strong></p>
+                    <ul>
+                        <li>Your file should be a standard CSV (Comma Separated Values) or Excel (XLSX, XLS) file.</li>
+                        <li>The first row should contain column headers (e.g., "Timestamp", "Outdoor Temp", "Control_Signal_X", "Sensor_Y").</li>
+                        <li>Ensure your timestamp column is consistently formatted (e.g., "YYYY-MM-DD HH:MM:SS" or ISO 8601). You'll specify this in the next step.</li>
+                        <li>Data should be time-series, typically with hourly or sub-hourly resolution.</li>
+                    </ul>
+                    <p><strong>Your Privacy Matters:</strong></p>
+                    <ul>
+                        <li><strong>Your data never leaves your computer.</strong> This tool runs entirely in your web browser.</li>
+                        <li>All analysis is performed locally on your machine.</li>
+                        <li>No data is uploaded to any server, collected, or stored by us. Your information remains private.</li>
+                    </ul>
+                </div>
+                <button class="action-button" onclick="handleFileUpload()">Load Selected File & Proceed</button>
+                <div style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
+                    <p style="margin-bottom: 5px; font-style: italic;">Don't have a file? Try the example:</p>
+                    <button class="action-button" style="background-color: #5c6bc0;" onclick="loadExampleData()">Load Example Data (example_data.csv)</button>
+                </div>
+            </div>
+            <pre id="filePreview" style="max-height: 200px; overflow: auto; background-color: #eee; padding:10px; display: none;"></pre>
+        </div>
+
+        <div id="columnWizard" class="page">
+            <h2>2. Map Your Data Columns</h2>
+            <p>Please tell us which columns from your uploaded file correspond to the following key data types. The dropdowns below are populated with the headers from your file.</p>
+            
+            <div class="wizard-step">
+                <h3>A. Timestamp Column</h3>
+                <label for="timestampColumn">Select the column containing timestamps:</label>
+                <select id="timestampColumn"></select>
+                <label for="timestampFormat">Specify timestamp format (if not automatically detected, e.g., <code>YYYY-MM-DD HH:mm:ss</code> or <code>MM/DD/YYYY hh:mm A</code>). Leave blank to attempt auto-detection.</label>
+                <input type="text" id="timestampFormat" placeholder="e.g., YYYY-MM-DD HH:mm:ss">
+                 <div class="explanation">
+                    <p><strong>Why this is important:</strong> Accurate time information is fundamental for any time-series analysis. We need to know <em>when</em> each data point was recorded.</p>
+                    <p><strong>Example:</strong> If your data looks like <code>2023-10-26 14:30:00, 15.5, 1, ...</code>, and "2023-10-26 14:30:00" is in a column named "ReadingTime", you'd select "ReadingTime" here.</p>
+                </div>
+            </div>
+
+            <div class="wizard-step">
+                <h3>B. Outdoor Temperature Column</h3>
+                <label for="outdoorTempColumn">Select the column for outdoor air temperature (typically in °C):</label>
+                <select id="outdoorTempColumn"></select>
+                <div class="explanation">
+                    <p><strong>Why this is important:</strong> Building energy consumption and system performance are heavily influenced by outdoor temperature. This allows us to normalize comparisons, ensuring we're comparing system states under similar external conditions.</p>
+                     <p><strong>Example:</strong> A column named "OAT" or "ExternalTemp" containing values like <code>10.2</code>, <code>15.7</code>, etc.</p>
+               </div>
+            </div>
+
+            <div class="wizard-step">
+                <h3>C. Primary Control Signal</h3>
+                <label for="controlSignalColumn">Select the main control signal column you want to analyze (e.g., Primary Control Signal, AI_Enable):</label>
+                <select id="controlSignalColumn"></select>
+                <div class="explanation">
+                    <p><strong>Why this is important:</strong> This is the signal whose impact you want to assess. The analysis will compare system behavior when this signal is "ON" versus "OFF".</p>
+                    <p><strong>Example:</strong> A column named "AI_Mode" with values <code>1</code> (for ON) and <code>0</code> (for OFF), or a specific system's status signal.</p>
+                </div>
+            </div>
+            
+            <div class="wizard-step">
+                <h3>D. Signals for Analysis</h3>
+                <label for="analysisSignalColumns">Select one or more sensor/signal columns to analyze (e.g., heating circuit temp, AHU supply temp, energy meter readings):</label>
+                <select id="analysisSignalColumns" multiple size="8"></select>
+                <div class="explanation">
+                    <p><strong>Why this is important:</strong> These are the dependent variables. We'll examine how their values change when the Primary Control Signal (C) is ON versus OFF, normalized by Outdoor Temperature (B).</p>
+                    <p><strong>Example:</strong> Columns like "Supply_Air_Temp_AHU1", "Heating_Valve_Position", "CHW_Flow_Rate", "Electricity_Meter_kWh". You can select multiple.</p>
+                </div>
+            </div>
+            <button class="action-button" onclick="saveColumnMappingAndProceed()">Save Mapping & Proceed to Configuration</button>
+        </div>
+
+        <div id="configureAnalysis" class="page">
+            <h2>3. Configure Analysis Parameters</h2>
+            <!-- Configuration for Control Signal ON/OFF definition -->
+            <div class="config-section">
+                <h3>Control Signal Definition</h3>
+                <p>Define how "ON" and "OFF" states are determined for your selected Primary Control Signal (<strong id="selectedControlSignalName">N/A</strong>).</p>
+                
+                <label for="controlType">Control Logic:</label>
+                <select id="controlType">
+                    <option value="threshold">Threshold-based (for numeric signals)</option>
+                    <option value="date_range">Split by date ranges (manual ON/OFF periods)</option>
+                    <!-- Add more types if needed, like "Average of AI_Sts" from original script -->
+                </select>
+
+                <div id="thresholdConfig">
+                    <div class="slider-container">
+                        <label for="onThresholdMin">ON State Lower Threshold:</label>
+                        <input type="number" id="onThresholdMin" step="0.01" value="0.9"> 
+                        <label for="onThresholdMax">ON State Upper Threshold:</label>
+                        <input type="number" id="onThresholdMax" step="0.01" value="1.0">
+                    </div>
+                     <div class="slider-container">
+                        <label for="offThresholdMin">OFF State Lower Threshold:</label>
+                        <input type="number" id="offThresholdMin" step="0.01" value="0.0">
+                        <label for="offThresholdMax">OFF State Upper Threshold:</label>
+                        <input type="number" id="offThresholdMax" step="0.01" value="0.2">
+                    </div>
+                </div>
+                 <div class="explanation">
+                    <p><strong>Threshold-based Logic:</strong> For a numeric control signal (e.g., where 1 = ON, 0 = OFF, or a percentage activation), you define ranges.</p>
+                    <ul>
+                        <li><strong>ON State Range:</strong> Values within this range (inclusive) are considered "ON". Example: If your signal is 0-1, ON might be 0.9 to 1.0.</li>
+                        <li><strong>OFF State Range:</strong> Values within this range (inclusive) are considered "OFF". Example: 0.0 to 0.2.</li>
+                    </ul>
+                    <p>The script uses these thresholds to classify each data point based on the *daily average* value of the control signal. All hours of a day where the daily average falls into the "ON" range are considered "ON" hours for the analysis (and similarly for "OFF").</p>
+                    <p><strong>Split by Date Ranges Logic:</strong> Manually define periods when the control was ON and when it was OFF. This is useful if the control isn't a simple signal in your data but was enabled/disabled based on a schedule.</p>
+                </div>
+            </div>
+
+            <!-- Date Range Selection -->
+            <div class="config-section">
+                <h3>Date Range Selection</h3>
+                 <label for="onDateStart">ON State Start Date:</label>
+                <input type="datetime-local" id="onDateStart">
+                <label for="onDateEnd">ON State End Date:</label>
+                <input type="datetime-local" id="onDateEnd">
+                
+                <label for="offDateStart">OFF State Start Date:</label>
+                <input type="datetime-local" id="offDateStart">
+                <label for="offDateEnd">OFF State End Date:</label>
+                <input type="datetime-local" id="offDateEnd">
+                <div class="explanation">
+                    <p>Specify the overall date periods for your "ON state" data and "OFF state" data. The analysis will only consider data within these respective periods.</p>
+                    <p><strong>Example:</strong> You might have run an AI optimization (ON state) from 2023-01-01 to 2023-06-30, and want to compare it to a baseline period (OFF state) from 2022-01-01 to 2022-06-30.</p>
+                </div>
+            </div>
+            
+            <!-- Temperature Filter -->
+            <div class="config-section">
+                <h3>Outdoor Temperature Filter</h3>
+                <div class="slider-container">
+                    <label for="tempRange">Filter by outdoor temperature (°C): <span id="tempRangeValue"></span></label>
+                    <input type="range" id="tempRangeMin" min="-20" max="40" value="-20" step="0.5" oninput="updateTempSlider()">
+                    <input type="range" id="tempRangeMax" min="-20" max="40" value="40" step="0.5" oninput="updateTempSlider()">
+                </div>
+                 <div class="explanation">
+                    <p>Filter the data to include only points where the outdoor temperature was within the selected range. This applies to all signals and helps ensure comparisons are made under relevant conditions.</p>
+                    <p><strong>Example:</strong> If you're analyzing heating, you might filter for temperatures below 15°C. If analyzing cooling, above 20°C.</p>
+                </div>
+            </div>
+
+            <!-- Hour of Day Filter -->
+            <div class="config-section">
+                <h3>Hour of Day Filter</h3>
+                <div class="slider-container">
+                    <label for="hourRange">Filter by hour of day (0-24): <span id="hourRangeValue">0 - 24</span></label>
+                    <input type="range" id="hourRangeMin" min="0" max="24" value="0" step="1" oninput="updateHourSlider()">
+                    <input type="range" id="hourRangeMax" min="0" max="24" value="24" step="1" oninput="updateHourSlider()">
+                </div>
+                <div class="explanation">
+                    <p>Filter data to specific hours of the day. This is useful for analyzing specific operational periods, like occupied hours (e.g., 8-17) or nighttime setbacks.</p>
+                     <p><strong>Example:</strong> To analyze performance only during working hours, you might set this to 8:00 - 18:00.</p>
+                </div>
+            </div>
+            <button class="action-button" onclick="runAnalysis()">Run Analysis & View Results</button>
+        </div>
+
+        <div id="results" class="page">
+            <h2>4. Analysis Results</h2>
+            <p>This section will display the various analyses performed on your data based on the configurations you've set. Ensure you have completed steps 1-3.</p>
+
+            <!-- Tabs for different analysis categories -->
+            <div class="tabs" id="analysisCategoryTabs">
+                <!-- JS will populate these -->
+            </div>
+
+            <div id="analysisOutputContainer">
+                <!-- Content for each analysis category will be loaded here -->
+                <!-- Example: Daily ON/OFF Distribution -->
+                <div id="dailyOnOffDistributionSection" class="tab-content">
+                    <h3>Initial Data Overview & ON/OFF Distribution</h3>
+                    <div id="dailyOnOffChart" class="chart-container"></div>
+                    <div class="metrics-grid" style="margin-top: 20px;">
+                        <div class="metric">
+                            <h4>Control = ON (Hours)</h4>
+                            <div class="value" id="onSamplesCount">-</div>
+                            <div class="caption" id="onSamplesPercent">- %</div>
+                        </div>
+                        <div class="metric">
+                            <h4>Control = OFF (Hours)</h4>
+                            <div class="value" id="offSamplesCount">-</div>
+                            <div class="caption" id="offSamplesPercent">- %</div>
+                        </div>
+                    </div>
+                    <div class="explanation" style="margin-top: 20px;">
+                        <p>This section provides an initial overview of your data after filtering and control state assignment.</p>
+                        <p><strong>ON/OFF Sample Distribution Chart:</strong> Shows the count of data samples classified as "ON" and "OFF" for each day, <em>after</em> applying your initial date range and control signal definition filters. It helps you visualize the prevalence of ON vs. OFF states over time in your filtered dataset before temperature or hour filtering is applied.</p>
+                        <p><strong>Control Signal Counts:</strong> These metrics show the number of hours your system was in the "ON" state versus the "OFF" state, based on all applied filters (date ranges, control definition, temperature, and hour of day).</p>
+                        <p><strong>Methodology (Daily ON/OFF Chart):</strong></p>
+                        <ol>
+                            <li>The tool first takes the data within your specified "ON state period" and "OFF state period".</li>
+                            <li>It then applies your "Control Signal Definition" (thresholds or date-based split) to classify data points.
+                                <ul>
+                                    <li>If <strong>threshold-based</strong>: For each day, it calculates the average value of your Primary Control Signal. If this daily average falls within your defined "ON threshold range", all hours of that day are marked as "ON". If it falls within the "OFF threshold range" (and isn't already ON), all hours are marked "OFF".</li>
+                                    <li>If <strong>date-based split</strong>: Data points within the "ON state date range" are marked "ON", and those in the "OFF state date range" are marked "OFF".</li>
+                                </ul>
+                            </li>
+                            <li>The bar chart then counts how many hourly samples end up in the "ON" state (orange) and "OFF" state (grey) for each calendar day.</li>
+                        </ol>
+                        <p><strong>Methodology (Control Signal Counts):</strong></p>
+                        <ol>
+                            <li>The full dataset is filtered by your selected date ranges for ON and OFF periods.</li>
+                            <li>The Primary Control Signal is evaluated based on your chosen definition (thresholds on daily averages or date-based split) to assign an initial "control_state" (1 for ON, 0 for OFF, or NA if neither).</li>
+                            <li>The Outdoor Temperature filter is applied.</li>
+                            <li>The Hour of Day filter is applied.</li>
+                            <li>The remaining data points are counted:
+                                <ul>
+                                    <li><strong>Control = ON:</strong> Total hours where `control_state` is 1 after all filters.</li>
+                                    <li><strong>Control = OFF:</strong> Total hours where `control_state` is 0 after all filters.</li>
+                                </ul>
+                            </li>
+                        </ol>
+                        <p><strong>Use Case for Energy Engineers:</strong> Quickly verify if the control strategy was active as expected. Understand the proportion of time the control strategy was active versus inactive within the specific conditions (temperature, time of day) you're analyzing. This is crucial context for interpreting subsequent impact analyses.</p>
+                    </div>
+                </div>
+                
+                <!-- Placeholder for Temperature Analysis (the most complex one) -->
+                <div id="temperatureAnalysisSection" class="tab-content">
+                    <h3>Outdoor Temperature Normalized Analysis for <span id="currentSignalForTempAnalysis"></span></h3>
+                     <div id="temperatureAnalysisControls">
+                        <label for="signalForAnalysisSelect">Select Signal for Temperature Analysis:</label>
+                        <select id="signalForAnalysisSelect"></select>
+                        <!-- Affinity law checkbox removed from here -->
+                    </div>
+
+                    <!-- Day Specific Tabs -->
+                    <div class="tabs" id="dayAnalysisTabs" style="margin-top: 15px; margin-bottom: 10px;">
+                        <!-- JS will populate these: All Days, Weekdays, Weekends, Mon, Tue, ... -->
+                    </div>
+
+                    <div id="tempAnalysisChart" class="chart-container"></div>
+                    <div id="tempDistChart" class="chart-container" style="min-height: 150px;"></div> <!-- For temperature distribution -->
+                    <div class="metrics-grid" id="tempAnalysisMetrics"></div>
+                    
+                    <!-- Affinity Law Checkbox - New Location -->
+                    <div class="config-section" style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;">
+                        <input type="checkbox" id="applyAffinityLaw" name="applyAffinityLaw" style="margin-right: 5px; vertical-align: middle;">
+                        <label for="applyAffinityLaw" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Apply Affinity Law Correction (for Fan/Pump Pressure signals)</label>
+                        <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">Estimates power change from pressure change using Power ∝ Pressure<sup>1.5</sup>. Check this if analyzing a pressure signal related to fan or pump energy.</span></span>
+                    </div>
+
+                    <div id="tempAnalysisInterpretation" class="explanation"></div>
+                    <div class="explanation" style="margin-top: 20px;">
+                        <p>This is a core analysis that compares the selected signal's behavior during "ON" vs. "OFF" control states, normalized by outdoor temperature. This ensures fair comparisons by only looking at data under similar weather conditions.</p>
+                        
+                        <h4>Methodology:</h4>
+                        <ol>
+                            <li><strong>Data Preparation:</strong>
+                                <ul>
+                                    <li>The data is filtered based on all your selections (date ranges, control definition, outdoor temperature range, hour of day range).</li>
+                                    <li>The chosen "Signal for Analysis" (e.g., Supply Air Temperature) is isolated.</li>
+                                </ul>
+                            </li>
+                            <li><strong>Temperature Binning <span class="tooltip">(i)<span class="tooltiptext">Grouping data into temperature ranges (e.g., 0-2°C, 2-4°C) to compare ON/OFF states under similar conditions.</span></span>:</strong>
+                                <p>To compare apples to apples, we group data into "temperature bins". For example, we might use 2°C wide bins: 0-2°C, 2-4°C, 4-6°C, and so on, covering the range of your filtered outdoor temperature data.</p>
+                                <p><em>Example:</em> If an ON data point occurred at 3.1°C and an OFF data point at 3.5°C, both would fall into the 2-4°C bin.</p>
+                            </li>
+                            <li><strong>Statistics per Bin:</strong>
+                                <p>Within each temperature bin, we calculate statistics for the "Signal for Analysis" separately for "ON" periods and "OFF" periods:</p>
+                                <ul>
+                                    <li><strong>Average (Mean) Value:</strong> The central tendency.</li>
+                                    <li><strong>Sample Count:</strong> How many data points fall into this bin for ON and OFF states.</li>
+                                    <li><strong>95% Data Range (Percentiles):</strong> The range covering 95% of the data points (specifically, the 2.5th to 97.5th percentiles). This gives an idea of the data spread.</li>
+                                </ul>
+                                <p><em>Example Table for a "Supply Air Temp" signal:</em></p>
+                                <table style="font-size:0.9em;">
+                                  <thead><tr><th>Temp Bin</th><th>State</th><th>Avg Temp</th><th>Samples</th><th>2.5th Pctl</th><th>97.5th Pctl</th></tr></thead>
+                                  <tbody>
+                                    <tr><td>2-4°C</td><td>ON</td><td>18.5°C</td><td>120</td><td>17.0°C</td><td>20.0°C</td></tr>
+                                    <tr><td>2-4°C</td><td>OFF</td><td>20.1°C</td><td>150</td><td>18.5°C</td><td>21.5°C</td></tr>
+                                  </tbody>
+                                </table>
+                            </li>
+                            <li><strong>Visualization:</strong>
+                                <p>A bar chart displays the average "ON" value and average "OFF" value for each temperature bin side-by-side. Error bars often show the 95% data range.</p>
+                                <p>Bars for bins with few samples (e.g., fewer than 10 hourly samples) might be faded or marked as less reliable, as averages from small sample sizes can be misleading.</p>
+                            </li>
+                            <li><strong>Impact Metrics:</strong>
+                                <ul>
+                                    <li><strong>Simple Average Difference:</strong> For each temperature bin that has sufficient samples (at least 10 hours) for *both* the ON state and the OFF state (i.e., a reliable overlapping bin), calculate `Difference = Avg_ON_in_bin - Avg_OFF_in_bin`. The "Simple Average Difference" is the average of these individual differences across all such reliable overlapping bins.
+                                    <p><em>Example:</em> If for reliable overlapping bins 0-2°C, 2-4°C, 4-6°C the differences are -1.0°C, -1.2°C, -0.8°C, the simple average diff is `(-1.0 - 1.2 - 0.8) / 3 = -1.0°C`.
+                                    </p>
+                                    </li>
+                                    <li><strong>Simple Percentage Difference:</strong> `(Simple Average Difference / Grand_Average_OFF_Value) * 100%`. The Grand_Average_OFF_Value is the average of all Avg_OFF values from the same reliable overlapping bins used for the Simple Average Difference.
+                                    <p><em>Example:</em> If Grand_Average_OFF_Value (from reliable overlapping bins) is 20°C, then `(-1.0°C / 20°C) * 100% = -5.0%`.</p>
+                                    </li>
+                                    <li><strong>Temperature-Occurrence-Weighted Difference <span class="tooltip">(i)<span class="tooltiptext">Gives more importance to differences observed at temperatures that occur more frequently in your overall dataset.</span></span>:</strong> This metric also only considers temperature bins that are reliable for both ON and OFF states. It accounts for how often each such temperature bin actually occurs in your *entire filtered dataset* (both ON and OFF periods). Bins that occur more frequently get a higher "weight".
+                                        <p><em>Calculation Sketch:</em></p>
+                                        <ol style="font-size:0.9em;">
+                                            <li>Calculate occurrence frequency (weight) of each temp bin in the total dataset. E.g., 2-4°C occurs 20% of the time, 4-6°C occurs 30%.</li>
+                                            <li>For each reliable overlapping bin (sufficient samples for both ON and OFF): `Weighted_Component = (Avg_ON - Avg_OFF)_in_bin * Weight_of_bin`.</li>
+                                            <li>`Weighted Average Difference = Sum of all Weighted_Components / Sum of Weights for these bins`.</li>
+                                        </ol>
+                                        <p>This provides a more realistic impact estimate reflecting typical operating conditions.</p>
+                                    </li>
+                                     <li><strong>Uptime Correction <span class="tooltip">(i)<span class="tooltiptext">Adjusts the calculated impact based on the actual percentage of time the control system was active within the analyzed 'ON' periods.</span></span>:</strong> The calculated differences (simple and weighted) reflect the impact <em>during the hours the control was ON</em>. If the control strategy had an uptime of, say, 80% within the "ON" periods you're analyzing, the "Uptime Corrected" values estimate the impact scaled to that uptime. E.g., `Uptime_Corrected_Difference = Calculated_Difference * (Uptime_Percentage / 100)`. This helps understand the overall impact considering actual operational uptime.</li>
+                                    <li><strong>Affinity Law Correction (for Fan/Pump Pressure signals) <span class="tooltip">(i)<span class="tooltiptext">Estimates power change from pressure change using Power ∝ Pressure<sup>1.5</sup>.</span></span>:</strong> If analyzing a pressure signal for fans or pumps (e.g., "AHU Pressure"), a direct pressure difference doesn't linearly translate to energy savings. The Affinity Law is used: `Power_Change_Percent ≈ ((1 + Pressure_Change_Percent/100)^1.5 - 1) * 100`. This estimates the percentage change in fan/pump power.
+                                    <p><em>Example:</em> A 10% reduction in pressure (`-10%`) leads to: `((1 - 0.1)^1.5 - 1)*100% ≈ ((0.9)^1.5 - 1)*100% ≈ (0.853 - 1)*100% ≈ -14.7%` estimated power reduction.</p>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li><strong>Day-Specific Analysis:</strong> The above analysis is often repeated for "All Days", "Weekdays", "Weekends", and even individual days of the week to see if the control strategy's impact varies.</li>
+                        </ol>
+                        <p><strong>Use Case for Energy Engineers:</strong> This is the workhorse analysis to quantify control strategy effectiveness. It helps answer: "How much does my AI/control change signal X when it's ON, compared to when it's OFF, under similar outdoor conditions?" Is it reducing heating supply temps? Increasing AHU pressure? By how much?</p>
+                    </div>
+                </div>
+                
+                <!-- Other analysis sections will follow a similar pattern -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global State ---
+        let rawData = []; // Array of objects
+        let columnHeaders = [];
+        let mappedData = []; // Data with consistent naming after wizard
+        let filteredData = []; // Data after all filters are applied
+        let buildingMetadata = { timezone: 'Etc/GMT' }; // Placeholder, user might need to specify or assume local
+        
+        // Selected column names from wizard
+        let config = {
+            timestampColumn: null,
+            timestampFormat: null,
+            outdoorTempColumn: null,
+            controlSignalColumn: null,
+            analysisSignalColumns: [],
+            // Default analysis parameters (can be updated by UI)
+            controlType: 'threshold',
+            onThresholdMin: 0.9,
+            onThresholdMax: 1.0,
+            offThresholdMin: 0.0,
+            offThresholdMax: 0.2,
+            onDateStart: null,
+            onDateEnd: null,
+            offDateStart: null,
+            offDateEnd: null,
+            tempRangeMin: -20,
+            tempRangeMax: 40,
+            hourRangeMin: 0,
+            hourRangeMax: 24
+        };
+        const SIGNAL_CATEGORY_TRANSLATIONS = { /* From Python */ };
+        const ORDERED_SIGNAL_CATEGORIES = [ /* From Python */ ];
+
+
+        // --- Navigation ---
+        const pages = document.querySelectorAll('.page');
+        const navButtons = document.querySelectorAll('#mainNav button');
+
+        function navigateToPage(pageId) {
+            pages.forEach(page => page.classList.remove('active'));
+            navButtons.forEach(button => button.classList.remove('active'));
+            
+            const pageElement = document.getElementById(pageId);
+            if (pageElement) { // Check if element exists
+                pageElement.classList.add('active');
+            } else {
+                console.error("Page element not found:", pageId);
+                document.getElementById('welcome').classList.add('active'); // Fallback to welcome
+            }
+            
+            const activeButton = document.querySelector(`#mainNav button[data-page="${pageId}"]`);
+            if (activeButton) {
+                activeButton.classList.add('active');
+            } else {
+                 const fallbackButton = document.querySelector(`#mainNav button[data-page="welcome"]`);
+                 if (fallbackButton) fallbackButton.classList.add('active');
+            }
+            window.scrollTo(0, 0); // Scroll to the top of the page
+        }
+
+        navButtons.forEach(button => {
+            button.addEventListener('click', () => navigateToPage(button.dataset.page));
+        });
+        
+        // --- 1. File Upload ---
+        const fileInput = document.getElementById('fileInput');
+        const filePreview = document.getElementById('filePreview');
+
+        function handleFileUpload() {
+            const file = fileInput.files[0];
+            if (!file) {
+                alert("Please select a file.");
+                return;
+            }
+
+            // Display a preview of the first few lines
+            const readerForPreview = new FileReader();
+            readerForPreview.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                filePreview.textContent = lines.slice(0, 10).join('\n'); // Show first 10 lines
+            };
+            readerForPreview.readAsText(file.slice(0, 1024)); // Read first 1KB for preview
+
+            // Parse the full file
+            if (file.name.endsWith('.csv')) {
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    dynamicTyping: true, // Attempts to convert numbers and booleans
+                    complete: function(results) {
+                        rawData = results.data;
+                        columnHeaders = results.meta.fields;
+                        populateColumnWizard();
+                        // alert("CSV file loaded successfully! Proceed to Column Mapping.");
+                        navigateToPage('columnWizard');
+                    },
+                    error: function(error) {
+                        alert("Error parsing CSV: " + error.message);
+                    }
+                });
+            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates:true}); // cellDates:true attempts to parse dates
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    rawData = XLSX.utils.sheet_to_json(worksheet, {header: 1}); // Get array of arrays first
+                    
+                    if (rawData.length > 0) {
+                        columnHeaders = rawData[0]; // First row is headers
+                        // Convert array of arrays to array of objects
+                        const objectData = [];
+                        for (let i = 1; i < rawData.length; i++) {
+                            let obj = {};
+                            for (let j = 0; j < columnHeaders.length; j++) {
+                                obj[columnHeaders[j]] = rawData[i][j];
+                            }
+                            objectData.push(obj);
+                        }
+                        rawData = objectData;
+                        // Attempt to type cast, especially for dates
+                        rawData.forEach(row => {
+                            for (const key in row) {
+                                if (row[key] instanceof Date) {
+                                    // Already a date, good.
+                                } else if (typeof row[key] === 'number' && row[key] > 25569 && row[key] < 50000) { 
+                                    // Heuristic for Excel date serial numbers (days since 1900-01-00)
+                                    // This is a simplification; robust Excel date handling is complex.
+                                    try {
+                                        const utc_days  = Math.floor(row[key] - 25569);
+                                        const utc_value = utc_days * 86400;                                     
+                                        const date_info = new Date(utc_value*1000);
+                                        // Check if it's a valid date (heuristic)
+                                        if (date_info.getUTCFullYear() > 1970 && date_info.getUTCFullYear() < 2070) {
+                                           row[key] = date_info;
+                                        }
+                                    } catch (ex) { /* ignore if conversion fails */ }
+                                } else if (typeof row[key] === 'string' && !isNaN(parseFloat(row[key])) && isFinite(row[key])) {
+                                    row[key] = parseFloat(row[key]);
+                                }
+                            }
+                        });
+
+                        populateColumnWizard();
+                        // alert("Excel file loaded successfully! Proceed to Column Mapping.");
+                        navigateToPage('columnWizard');
+                    } else {
+                         alert("Excel file appears to be empty or has no headers.");
+                    }
+                };
+                reader.onerror = function(error) {
+                    alert("Error reading Excel file: " + error);
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert("Unsupported file type. Please upload a CSV or Excel file.");
+            }
+        }
+
+        // --- NEW: Load Example Data ---
+        function loadExampleData() {
+            const exampleFilePath = 'example_data.csv'; // Assuming it's in the same directory
+            fetch(exampleFilePath)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} - Could not fetch ${exampleFilePath}`);
+                    }
+                    return response.text();
+                })
+                .then(csvText => {
+                    // Display preview
+                    const lines = csvText.split('\n');
+                    filePreview.textContent = lines.slice(0, 10).join('\n');
+                    filePreview.style.display = 'block';
+
+                    // Parse the CSV data
+                    Papa.parse(csvText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        dynamicTyping: true, // Attempts to convert numbers and booleans
+                        complete: function(results) {
+                            rawData = results.data;
+                            columnHeaders = results.meta.fields;
+                            populateColumnWizard();
+                            alert("Example data loaded successfully! Proceed to Column Mapping.");
+                            navigateToPage('columnWizard');
+                        },
+                        error: function(error) {
+                            alert("Error parsing example CSV: " + error.message);
+                            filePreview.style.display = 'none'; // Hide preview on error
+                        }
+                    });
+                })
+                .catch(error => {
+                    alert("Error loading example data: " + error.message);
+                    console.error('Fetch error:', error);
+                    filePreview.style.display = 'none'; // Hide preview on error
+                });
+        }
+        // --- END NEW ---
+
+        // --- 2. Column Wizard ---
+        function populateColumnWizard() {
+            const selects = {
+                timestamp: document.getElementById('timestampColumn'),
+                outdoorTemp: document.getElementById('outdoorTempColumn'),
+                controlSignal: document.getElementById('controlSignalColumn'),
+                analysisSignals: document.getElementById('analysisSignalColumns')
+            };
+
+            // Clear previous options for single-selects
+            selects.timestamp.innerHTML = '<option value="">-- Select Column --</option>';
+            selects.outdoorTemp.innerHTML = '<option value="">-- Select Column --</option>';
+            selects.controlSignal.innerHTML = '<option value="">-- Select Column --</option>';
+            // analysisSignals (multi-select) is cleared in updateAnalysisSignalOptions
+            
+            columnHeaders.forEach(header => {
+                const option = document.createElement('option');
+                option.value = header;
+                option.textContent = header;
+                selects.timestamp.appendChild(option.cloneNode(true));
+                selects.outdoorTemp.appendChild(option.cloneNode(true));
+                selects.controlSignal.appendChild(option.cloneNode(true));
+                // analysisSignals is populated by updateAnalysisSignalOptions
+            });
+
+            // Attempt to default timestamp column
+            for (const header of columnHeaders) {
+                if (header.toLowerCase().includes("time")) {
+                    selects.timestamp.value = header;
+                    break;
+                }
+            }
+
+            // Attempt to default outdoor temperature column
+            let foundOutdoorTemp = false;
+            // Priority 1: "outdoor"
+            for (const header of columnHeaders) {
+                if (header.toLowerCase().includes("outdoor")) {
+                    selects.outdoorTemp.value = header;
+                    foundOutdoorTemp = true;
+                    break;
+                }
+            }
+            // Priority 2: "outside"
+            if (!foundOutdoorTemp) {
+                for (const header of columnHeaders) {
+                    if (header.toLowerCase().includes("outside")) { 
+                        selects.outdoorTemp.value = header;
+                        foundOutdoorTemp = true;
+                        break;
+                    }
+                }
+            }
+            // Priority 3: Specific patterns like "t", "temp_outdoor", etc.
+            if (!foundOutdoorTemp) {
+                for (const header of columnHeaders) {
+                    const lowerHeader = header.toLowerCase();
+                    if (lowerHeader === "t" || lowerHeader === "temp_outdoor" || lowerHeader === "t_oa" || lowerHeader === "t_out" || lowerHeader === "temperature_outdoor") {
+                        selects.outdoorTemp.value = header;
+                        foundOutdoorTemp = true; 
+                        break;
+                    }
+                }
+            }
+
+            // Attempt to default control signal column
+            for (const header of columnHeaders) {
+                if (header.toLowerCase().includes("control")) {
+                    selects.controlSignal.value = header;
+                    // If multiple columns contain "control", the last one found will be selected by default.
+                    // Add break; here if you want the first one found to be selected.
+                }
+            }
+
+            // Add event listeners to update analysis signals when critical columns change
+            selects.timestamp.addEventListener('change', updateAnalysisSignalOptions);
+            selects.outdoorTemp.addEventListener('change', updateAnalysisSignalOptions);
+            selects.controlSignal.addEventListener('change', updateAnalysisSignalOptions);
+
+            // Initial population of analysis signals
+            updateAnalysisSignalOptions(); 
+        }
+
+        function updateAnalysisSignalOptions() {
+            const timestampCol = document.getElementById('timestampColumn').value;
+            const outdoorTempCol = document.getElementById('outdoorTempColumn').value;
+            const controlSignalCol = document.getElementById('controlSignalColumn').value;
+            const analysisSignalsSelect = document.getElementById('analysisSignalColumns');
+
+            const excludedColumns = new Set([timestampCol, outdoorTempCol, controlSignalCol].filter(Boolean)); // filter(Boolean) removes empty strings if a select is not chosen
+
+            // Store currently selected analysis signals to try and reselect them
+            const previouslySelectedAnalysisSignals = Array.from(analysisSignalsSelect.selectedOptions).map(opt => opt.value);
+
+            analysisSignalsSelect.innerHTML = ''; // Clear existing options
+
+            columnHeaders.forEach(header => {
+                if (!excludedColumns.has(header)) {
+                    const option = document.createElement('option');
+                    option.value = header;
+                    option.textContent = header;
+                    // Reselect if it was previously selected
+                    if (previouslySelectedAnalysisSignals.includes(header)) {
+                        option.selected = true;
+                    }
+                    analysisSignalsSelect.appendChild(option);
+                }
+            });
+        }
+
+        function saveColumnMappingAndProceed() {
+            config.timestampColumn = document.getElementById('timestampColumn').value;
+            config.timestampFormat = document.getElementById('timestampFormat').value.trim() || null; // null if empty
+            config.outdoorTempColumn = document.getElementById('outdoorTempColumn').value;
+            config.controlSignalColumn = document.getElementById('controlSignalColumn').value;
+            
+            const analysisSignalsSelect = document.getElementById('analysisSignalColumns');
+            config.analysisSignalColumns = Array.from(analysisSignalsSelect.selectedOptions).map(opt => opt.value);
+
+            if (!config.timestampColumn || !config.outdoorTempColumn || !config.controlSignalColumn || config.analysisSignalColumns.length === 0) {
+                alert("Please map all required columns (Timestamp, Outdoor Temp, Control Signal, and at least one Analysis Signal).");
+                return;
+            }
+            
+            // Update UI elements that show selected column names
+            document.getElementById('selectedControlSignalName').textContent = config.controlSignalColumn || "N/A";
+
+            // Prepare data by renaming columns for internal use and parsing timestamps
+            // This is a crucial step for standardizing data access later.
+            prepareMappedData(); 
+
+            // alert("Column mapping saved! Proceed to Analysis Configuration.");
+            navigateToPage('configureAnalysis');
+        }
+        
+        function prepareMappedData() {
+            if (rawData.length === 0 || !config.timestampColumn) return;
+            
+            mappedData = rawData.map(row => {
+                const newRow = {};
+                // Timestamp
+                let tsValue = row[config.timestampColumn];
+                if (typeof tsValue === 'string') {
+                    // Attempt to parse string timestamp. This needs to be robust.
+                    // For now, a simple new Date() parse. A library like Moment.js or date-fns would be better for specific formats.
+                    // If config.timestampFormat is provided, you'd use that to guide parsing.
+                    newRow.timestamp = new Date(tsValue);
+                } else if (tsValue instanceof Date) {
+                    newRow.timestamp = tsValue; // Already a Date object (e.g., from XLSX parsing)
+                } else if (typeof tsValue === 'number') { 
+                    // Could be Unix timestamp (ms or s) or Excel serial. Needs heuristics.
+                    // Assuming it might be Unix ms for simplicity here if it's a large number
+                    if (tsValue > 100000000000) newRow.timestamp = new Date(tsValue);
+                    else newRow.timestamp = new Date(tsValue * 1000); // assume seconds
+                } else {
+                    newRow.timestamp = null; // Could not parse
+                }
+
+                // Outdoor Temperature (t)
+                newRow.t = parseFloat(row[config.outdoorTempColumn]);
+
+                // Control Signal (control_signal_raw for thresholding, actual name for direct use)
+                newRow.control_signal_raw = parseFloat(row[config.controlSignalColumn]);
+                newRow[config.controlSignalColumn] = row[config.controlSignalColumn]; // keep original too
+
+                // Analysis Signals
+                config.analysisSignalColumns.forEach(colName => {
+                    newRow[colName] = parseFloat(row[colName]); // Assuming analysis signals are numeric
+                });
+                return newRow;
+            }).filter(row => row.timestamp && !isNaN(row.timestamp.getTime()) && !isNaN(row.t)); // Filter out rows with invalid timestamps or temp
+
+            if (mappedData.length === 0) {
+                alert("Warning: No valid data rows could be processed after mapping and timestamp parsing. Check your timestamp column and format.");
+            } else {
+                // Auto-set date range picker defaults based on data
+                const timestamps = mappedData.map(r => r.timestamp);
+                const minDate = new Date(Math.min.apply(null, timestamps));
+                const maxDate = new Date(Math.max.apply(null, timestamps));
+
+                document.getElementById('onDateStart').value = toLocalISOString(minDate).slice(0,16);
+                document.getElementById('onDateEnd').value = toLocalISOString(maxDate).slice(0,16);
+                document.getElementById('offDateStart').value = toLocalISOString(minDate).slice(0,16);
+                document.getElementById('offDateEnd').value = toLocalISOString(maxDate).slice(0,16);
+                
+                // Auto-set temperature slider min/max
+                const temps = mappedData.map(r => r.t).filter(t => !isNaN(t));
+                if(temps.length > 0) {
+                    const minT = Math.floor(Math.min.apply(null, temps));
+                    const maxT = Math.ceil(Math.max.apply(null, temps));
+                    document.getElementById('tempRangeMin').min = minT;
+                    document.getElementById('tempRangeMin').value = minT;
+                    document.getElementById('tempRangeMax').max = maxT;
+                    document.getElementById('tempRangeMax').value = maxT;
+                    updateTempSlider();
+                }
+            }
+        }
+        
+        function toLocalISOString(date) {
+            const tzoffset = (new Date()).getTimezoneOffset() * 60000; //offset in milliseconds
+            const localISOTime = (new Date(date.getTime() - tzoffset)).toISOString().slice(0, -1);
+            return localISOTime;
+        }
+
+
+        // --- 3. Configuration Update Handlers ---
+        function updateTempSlider() {
+            const min = document.getElementById('tempRangeMin').value;
+            const max = document.getElementById('tempRangeMax').value;
+            document.getElementById('tempRangeValue').textContent = `${min}°C - ${max}°C`;
+            if (parseFloat(min) > parseFloat(max)) {
+                 document.getElementById('tempRangeMin').value = max; // Ensure min <= max
+                 document.getElementById('tempRangeValue').textContent = `${max}°C - ${max}°C`;
+            }
+        }
+        updateTempSlider(); // Initial call
+
+        function updateHourSlider() {
+            const min = document.getElementById('hourRangeMin').value;
+            const max = document.getElementById('hourRangeMax').value;
+            document.getElementById('hourRangeValue').textContent = `${min}:00 - ${max}:00`;
+             if (parseInt(min) > parseInt(max)) {
+                 document.getElementById('hourRangeMin').value = max; // Ensure min <= max
+                  document.getElementById('hourRangeValue').textContent = `${max}:00 - ${max}:00`;
+            }
+        }
+        updateHourSlider(); // Initial call
+        
+        document.getElementById('controlType').addEventListener('change', function() {
+            config.controlType = this.value;
+            document.getElementById('thresholdConfig').style.display = (this.value === 'threshold') ? 'block' : 'none';
+            // If date_range, the date pickers for ON/OFF are primary. Thresholds become irrelevant.
+        });
+
+
+        // --- 4. Run Analysis & Display Results ---
+        function runAnalysis() {
+            if (mappedData.length === 0) {
+                alert("No data loaded or mapped. Please complete steps 1 and 2.");
+                return;
+            }
+
+            // Update config object from UI
+            config.onThresholdMin = parseFloat(document.getElementById('onThresholdMin').value);
+            config.onThresholdMax = parseFloat(document.getElementById('onThresholdMax').value);
+            config.offThresholdMin = parseFloat(document.getElementById('offThresholdMin').value);
+            config.offThresholdMax = parseFloat(document.getElementById('offThresholdMax').value);
+            config.onDateStart = new Date(document.getElementById('onDateStart').value);
+            config.onDateEnd = new Date(document.getElementById('onDateEnd').value);
+            config.offDateStart = new Date(document.getElementById('offDateStart').value);
+            config.offDateEnd = new Date(document.getElementById('offDateEnd').value);
+            config.tempRangeMin = parseFloat(document.getElementById('tempRangeMin').value);
+            config.tempRangeMax = parseFloat(document.getElementById('tempRangeMax').value);
+            config.hourRangeMin = parseInt(document.getElementById('hourRangeMin').value);
+            config.hourRangeMax = parseInt(document.getElementById('hourRangeMax').value);
+
+            // --- Main Filtering and State Assignment Logic ---
+            // This is a simplified version of filter_data_by_control_and_dates
+            // It needs to handle daily aggregation for threshold-based control.
+            
+            let currentFilteredData = mappedData.map(row => ({...row, control_state: undefined, hour: row.timestamp.getHours() }));
+
+            // 1. Date Range Filtering (initial broad filter for ON and OFF periods)
+            const onPeriodData = currentFilteredData.filter(row => row.timestamp >= config.onDateStart && row.timestamp <= config.onDateEnd);
+            const offPeriodData = currentFilteredData.filter(row => row.timestamp >= config.offDateStart && row.timestamp <= config.offDateEnd);
+
+            // 2. Assign control_state (0 or 1)
+            // This is complex if using daily average thresholds like in Python.
+            // For simplicity in this initial version, 'threshold' directly applies to 'control_signal_raw'.
+            // A more accurate version would group by day, calculate daily average of control_signal_raw, then assign state.
+            
+            let dataWithState = [];
+
+            if (config.controlType === 'threshold') {
+                 // Simplified: Apply thresholds directly to hourly data, not daily averages for now
+                const combinedPeriods = [...onPeriodData, ...offPeriodData]; // Combine then filter further by threshold
+                // Deduplicate based on timestamp (if on/off periods overlap and thresholds could assign to both)
+                const uniqueCombined = Array.from(new Map(combinedPeriods.map(item => [item.timestamp.getTime(), item])).values());
+
+                uniqueCombined.forEach(row => {
+                    if (row.timestamp >= config.onDateStart && row.timestamp <= config.onDateEnd &&
+                        row.control_signal_raw >= config.onThresholdMin && row.control_signal_raw <= config.onThresholdMax) {
+                        row.control_state = 1;
+                        dataWithState.push(row);
+                    } else if (row.timestamp >= config.offDateStart && row.timestamp <= config.offDateEnd &&
+                               row.control_signal_raw >= config.offThresholdMin && row.control_signal_raw <= config.offThresholdMax) {
+                        // Only assign OFF if not already ON (if periods/thresholds could overlap)
+                        if (row.control_state === undefined) { // Check if not already set to ON
+                           row.control_state = 0;
+                           dataWithState.push(row);
+                        }
+                    }
+                });
+            } else if (config.controlType === 'date_range') {
+                onPeriodData.forEach(row => { row.control_state = 1; dataWithState.push(row); });
+                // Add OFF period data, ensuring no overlap if onDate and offDate ranges are the same point
+                // This simplified logic assumes onPeriodData and offPeriodData are what define the states.
+                const offDataToAdd = offPeriodData.filter(offRow => 
+                    !onPeriodData.find(onRow => onRow.timestamp.getTime() === offRow.timestamp.getTime())
+                );
+                offDataToAdd.forEach(row => { row.control_state = 0; dataWithState.push(row); });
+            }
+            
+            // Ensure unique entries if date ranges overlapped and both qualified
+            dataWithState = Array.from(new Map(dataWithState.map(item => [item.timestamp.getTime(), item])).values());
+
+
+            // 3. Temperature Filter
+            filteredData = dataWithState.filter(row => row.t >= config.tempRangeMin && row.t <= config.tempRangeMax);
+
+            // 4. Hour Filter
+            filteredData = filteredData.filter(row => {
+                 const hour = row.timestamp.getHours(); // getHours() is 0-23
+                 return hour >= config.hourRangeMin && hour < config.hourRangeMax; // Max hour is exclusive
+            });
+            
+            if (filteredData.length === 0) {
+                alert("No data remains after applying all filters. Please adjust your filter settings.");
+                // Clear previous results
+                document.getElementById('dailyOnOffChart').innerHTML = '';
+                document.getElementById('onSamplesCount').textContent = '-';
+                // ... clear other result elements
+                return;
+            }
+            
+            // --- Now call the analysis functions ---
+            displayDailyOnOffDistribution(filteredData); // Pass the fully filtered data for this one. Python script used pre-temp filter.
+            displayControlSignalDistribution(filteredData);
+            
+            // For more complex analyses like Temperature Analysis, you'll need to pass `filteredData`
+            // and the selected signal from `config.analysisSignalColumns`.
+            // Example: if (config.analysisSignalColumns.length > 0) {
+            //    performTemperatureAnalysis(filteredData, config.analysisSignalColumns[0]);
+            // }
+            populateAnalysisTabs(); // Setup tabs for different analyses
+            populateDayAnalysisTabs(); // Setup day tabs for temperature analysis
+
+            // alert("Analysis complete! Results are being displayed.");
+            navigateToPage('results');
+            // Default to Temperature Analysis tab if data is available
+            if (filteredData.length > 0 && config.analysisSignalColumns.length > 0) {
+                showAnalysisTab('temperatureAnalysisSection');
+                 // Ensure the analysis is run for the default selected signal and default day type ("All Days")
+                performTemperatureAnalysis(filteredData, document.getElementById('signalForAnalysisSelect').value, 'All Days');
+            } else {
+                // If no data for temp analysis, default to the first available tab (Daily ON/OFF)
+                showAnalysisTab('dailyOnOffDistributionSection');
+            }
+        }
+
+        function populateAnalysisTabs() {
+            const tabsContainer = document.getElementById('analysisCategoryTabs');
+            // const outputContainer = document.getElementById('analysisOutputContainer');
+            tabsContainer.innerHTML = ''; // Clear existing tabs
+
+            const analysisTypes = [
+                { id: 'dailyOnOffDistributionSection', name: 'Initial Overview & ON/OFF Distribution' },
+                { id: 'temperatureAnalysisSection', name: 'Temperature Analysis' },
+            ];
+
+            let defaultTabId = 'dailyOnOffDistributionSection'; // Default to first tab
+
+            analysisTypes.forEach((type, index) => {
+                const button = document.createElement('button');
+                button.textContent = type.name;
+                button.addEventListener('click', () => showAnalysisTab(type.id));
+                tabsContainer.appendChild(button);
+                // Setting default active tab will be handled after runAnalysis or by direct navigation
+            });
+            
+            // Specific setup for temperature analysis signal selection
+            // const signalCategorySelect = document.getElementById('signalCategorySelect'); // Removed
+            const signalForAnalysisSelect = document.getElementById('signalForAnalysisSelect');
+            // signalCategorySelect.innerHTML = ''; // Clear // Removed
+            signalForAnalysisSelect.innerHTML = ''; // Clear
+            
+            config.analysisSignalColumns.forEach(sigName => {
+                const sigOption = document.createElement('option');
+                sigOption.value = sigName;
+                sigOption.textContent = sigName;
+                signalForAnalysisSelect.appendChild(sigOption);
+            });
+            
+            if (config.analysisSignalColumns.length > 0) {
+                 signalForAnalysisSelect.value = config.analysisSignalColumns[0]; // Select first by default
+                 document.getElementById('currentSignalForTempAnalysis').textContent = config.analysisSignalColumns[0];
+            }
+
+            signalForAnalysisSelect.onchange = function() {
+                const selectedSignal = this.value;
+                document.getElementById('currentSignalForTempAnalysis').textContent = selectedSignal;
+                // Trigger re-render of the temp analysis chart if visible and data exists
+                const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
+                const dayType = activeDayTab ? activeDayTab.dataset.daytype : 'All Days';
+                 if (document.getElementById('temperatureAnalysisSection').classList.contains('active') && filteredData.length > 0) {
+                    performTemperatureAnalysis(filteredData, selectedSignal, dayType);
+                }
+            };
+
+            // Add event listener for the new Affinity Law checkbox
+            document.getElementById('applyAffinityLaw').addEventListener('change', function() {
+                if (document.getElementById('temperatureAnalysisSection').classList.contains('active') && filteredData.length > 0) {
+                    const selectedSignal = document.getElementById('signalForAnalysisSelect').value;
+                    const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
+                    const dayType = activeDayTab ? activeDayTab.dataset.daytype : 'All Days';
+                    performTemperatureAnalysis(filteredData, selectedSignal, dayType);
+                }
+            });
+        }
+
+        function showAnalysisTab(tabId) {
+            window.scrollTo(0, 0); // Scroll to top
+            document.querySelectorAll('#analysisCategoryTabs button').forEach(btn => btn.classList.remove('active'));
+            const clickedButton = Array.from(document.querySelectorAll('#analysisCategoryTabs button')).find(button => {
+                 // Find button whose text content matches the beginning of the target tab's H3
+                 const tabH3Text = document.querySelector(`#${tabId} h3`)?.textContent.split(" for")[0].trim(); // Get base title
+                 return button.textContent.startsWith(tabH3Text);
+            });
+            if(clickedButton) clickedButton.classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+
+            // const activeTabButton = Array.from(document.querySelectorAll('#analysisCategoryTabs button')).find(button => button.textContent === document.querySelector(`#${tabId} h3`)?.textContent?.replace('for ...','').trim());
+            // if(activeTabButton) activeTabButton.classList.add('active');
+
+            // Trigger specific analysis function if tab is now active and data exists
+            if (filteredData.length > 0) {
+                const selectedSignal = document.getElementById('signalForAnalysisSelect').value;
+                // const selectedCategory = document.getElementById('signalCategorySelect').value; // Removed
+
+                if (tabId === 'temperatureAnalysisSection' && selectedSignal) {
+                    const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
+                    const dayType = activeDayTab ? activeDayTab.dataset.daytype : 'All Days';
+                    performTemperatureAnalysis(filteredData, selectedSignal, dayType);
+                } else if (tabId === 'dailyOnOffDistributionSection') {
+                    displayDailyOnOffDistribution(filteredData);
+                }
+            }
+        }
+        
+        // --- Analysis Function Stubs (to be implemented) ---
+        function displayDailyOnOffDistribution(data) { // This function now also handles control signal counts
+            // Daily ON/OFF Chart part
+            const dailyOnOffChartDiv = document.getElementById('dailyOnOffChart');
+            if (!data || data.length === 0) {
+                dailyOnOffChartDiv.innerHTML = '<p>No data to display daily ON/OFF distribution.</p>';
+                // Clear counts too
+                document.getElementById('onSamplesCount').textContent = '0';
+                document.getElementById('onSamplesPercent').textContent = '0.0%';
+                document.getElementById('offSamplesCount').textContent = '0';
+                document.getElementById('offSamplesPercent').textContent = '0.0%';
+                return;
+            }
+
+            const dailyCounts = {}; // Key: YYYY-MM-DD, Value: {ON: count, OFF: count}
+
+            data.forEach(row => {
+                if (row.control_state === undefined) return; // Skip if no state
+
+                const dateStr = row.timestamp.toISOString().split('T')[0];
+                if (!dailyCounts[dateStr]) {
+                    dailyCounts[dateStr] = { ON: 0, OFF: 0 };
+                }
+                if (row.control_state === 1) {
+                    dailyCounts[dateStr].ON++;
+                } else if (row.control_state === 0) {
+                    dailyCounts[dateStr].OFF++;
+                }
+            });
+
+            const dates = Object.keys(dailyCounts).sort();
+            const onValues = dates.map(d => dailyCounts[d].ON);
+            const offValues = dates.map(d => dailyCounts[d].OFF);
+
+            const traceOn = {
+                x: dates,
+                y: onValues,
+                name: 'Control = ON',
+                type: 'bar',
+                marker: { color: '#e2673b' }
+            };
+            const traceOff = {
+                x: dates,
+                y: offValues,
+                name: 'Control = OFF',
+                type: 'bar',
+                marker: { color: '#c6cacc' }
+            };
+
+            const layout = {
+                title: 'Daily ON/OFF Sample Distribution',
+                barmode: 'stack',
+                xaxis: { title: 'Date' },
+                yaxis: { title: 'Count of Hourly Samples' }
+            };
+            Plotly.newPlot('dailyOnOffChart', [traceOff, traceOn], layout, {responsive: true});
+
+            // Control Signal Counts part (formerly displayControlSignalDistribution)
+            const onSamples = data.filter(r => r.control_state === 1).length;
+            const offSamples = data.filter(r => r.control_state === 0).length;
+            const totalSamplesWithState = onSamples + offSamples;
+
+            document.getElementById('onSamplesCount').textContent = onSamples.toLocaleString();
+            document.getElementById('onSamplesPercent').textContent = totalSamplesWithState > 0 ? ((onSamples / totalSamplesWithState) * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('offSamplesCount').textContent = offSamples.toLocaleString();
+            document.getElementById('offSamplesPercent').textContent = totalSamplesWithState > 0 ? ((offSamples / totalSamplesWithState) * 100).toFixed(1) + '%' : '0.0%';
+        }
+
+        function displayControlSignalDistribution(data) {
+            if (!data || data.length === 0) {
+                document.getElementById('onSamplesCount').textContent = '0';
+                document.getElementById('onSamplesPercent').textContent = '0.0%';
+                document.getElementById('offSamplesCount').textContent = '0';
+                document.getElementById('offSamplesPercent').textContent = '0.0%';
+                return;
+            }
+            const onSamples = data.filter(r => r.control_state === 1).length;
+            const offSamples = data.filter(r => r.control_state === 0).length;
+            const totalSamplesWithState = onSamples + offSamples;
+
+            document.getElementById('onSamplesCount').textContent = onSamples.toLocaleString();
+            document.getElementById('onSamplesPercent').textContent = totalSamplesWithState > 0 ? ((onSamples / totalSamplesWithState) * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('offSamplesCount').textContent = offSamples.toLocaleString();
+            document.getElementById('offSamplesPercent').textContent = totalSamplesWithState > 0 ? ((offSamples / totalSamplesWithState) * 100).toFixed(1) + '%' : '0.0%';
+        }
+
+
+        function performTemperatureAnalysis(data, signalName, dayType = 'All Days') {
+            document.getElementById('currentSignalForTempAnalysis').textContent = signalName;
+            const chartDiv = document.getElementById('tempAnalysisChart');
+            const metricsDiv = document.getElementById('tempAnalysisMetrics');
+            const interpretationDiv = document.getElementById('tempAnalysisInterpretation');
+            const tempDistChartDiv = document.getElementById('tempDistChart');
+            chartDiv.innerHTML = ''; 
+            metricsDiv.innerHTML = '';
+            interpretationDiv.innerHTML = '';
+            tempDistChartDiv.innerHTML = '';
+
+            const applyAffinity = document.getElementById('applyAffinityLaw').checked;
+
+            if (!data || data.length === 0 || !signalName) {
+                chartDiv.innerHTML = "<p>Not enough data or no signal selected for temperature analysis.</p>";
+                return;
+            }
+             // Ensure the signal exists and has numeric data -> This check is MOVED to after dayType filtering
+            // const sampleSignalValue = data[0][signalName]; 
+            // if (typeof sampleSignalValue !== 'number') { 
+            //     chartDiv.innerHTML = `<p>Signal "${signalName}" does not contain numeric data or is not mapped correctly.</p>`;
+            //     return;
+            // }
+
+            // --- Day Type Filtering ---
+            let dayFilteredData = data;
+            const dayMap = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
+            
+            if (dayType === "Weekdays") {
+                dayFilteredData = data.filter(row => row.timestamp.getDay() >= 1 && row.timestamp.getDay() <= 5);
+            } else if (dayType === "Weekends") {
+                dayFilteredData = data.filter(row => row.timestamp.getDay() === 0 || row.timestamp.getDay() === 6);
+            } else if (dayMap.hasOwnProperty(dayType)) {
+                dayFilteredData = data.filter(row => row.timestamp.getDay() === dayMap[dayType]);
+            }
+            // If "All Days", no additional filtering needed beyond what `data` already represents.
+
+            if (dayFilteredData.length === 0) {
+                chartDiv.innerHTML = `<p>No data available for signal \"${signalName}\" for ${dayType}.</p>`;
+                metricsDiv.innerHTML = '';
+                interpretationDiv.innerHTML = '';
+                tempDistChartDiv.innerHTML = '';
+                return;
+            }
+            // --- End Day Type Filtering ---
+
+             // Ensure the signal exists and has numeric data in the dayFilteredData
+            const sampleSignalValue = dayFilteredData[0]?.[signalName]; // Check first element of day-filtered data
+            if (typeof sampleSignalValue !== 'number') {
+                chartDiv.innerHTML = `<p>Signal \"${signalName}\" does not contain numeric data or is not mapped correctly for ${dayType}.</p>`;
+                return;
+            }
+
+
+            // 1. Bin data by temperature (e.g., 2 degree bins) - USE dayFilteredData
+            const dataWithBins = dayFilteredData.map(row => ({
+                ...row,
+                temp_bin: Math.floor(row.t / 2) * 2, // 2-degree bins
+                signalValue: row[signalName] // The specific signal we're analyzing
+            })).filter(row => !isNaN(row.signalValue) && row.control_state !== undefined);
+
+
+            // 2. Group by temp_bin and control_state, then calculate stats
+            const statsByBin = {}; // { "2_ON": {mean, count, p2_5, p97_5}, "2_OFF": {...} }
+            
+            const groupedByBinThenState = dataWithBins.reduce((acc, row) => {
+                const key = `${row.temp_bin}_${row.control_state}`;
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(row.signalValue);
+                return acc;
+            }, {});
+
+            const MIN_SAMPLES_PER_BIN = 10; // From Python script
+
+            for (const key in groupedByBinThenState) {
+                const values = groupedByBinThenState[key];
+                if (values.length > 0) { // Calculate stats only if there are values
+                    values.sort((a, b) => a - b); // For percentiles
+                    const count = values.length;
+                    const mean = values.reduce((sum, v) => sum + v, 0) / count;
+                    const p2_5 = values[Math.floor(0.025 * (count -1))]; // Simplistic percentile
+                    const p97_5 = values[Math.ceil(0.975 * (count -1))];  // Simplistic percentile
+                    
+                    statsByBin[key] = { mean, count, p2_5, p97_5, isReliable: count >= MIN_SAMPLES_PER_BIN };
+                }
+            }
+
+            // 3. Prepare for Plotly
+            const uniqueTempBins = [...new Set(dataWithBins.map(r => r.temp_bin))].sort((a,b)=>a-b);
+            
+            const onMeans = [];
+            const offMeans = [];
+            const onP2_5 = []; const onP97_5 = []; const onCounts = [];
+            const offP2_5 = []; const offP97_5 = []; const offCounts = [];
+            const onOpacities = []; // For storing opacity values for ON bars
+            const offOpacities = []; // For storing opacity values for OFF bars
+
+            uniqueTempBins.forEach(bin => {
+                const onKey = `${bin}_1`;
+                const offKey = `${bin}_0`;
+
+                const onDataInBin = statsByBin[onKey];
+                const offDataInBin = statsByBin[offKey];
+
+                const isReliableOnInBin = onDataInBin && onDataInBin.isReliable;
+                const isReliableOffInBin = offDataInBin && offDataInBin.isReliable;
+
+                // Populate ON arrays and determine opacity
+                if (onDataInBin) {
+                    onMeans.push(onDataInBin.mean);
+                    onP2_5.push(onDataInBin.p2_5);
+                    onP97_5.push(onDataInBin.p97_5);
+                    onCounts.push(onDataInBin.count);
+                    onOpacities.push(isReliableOnInBin && isReliableOffInBin ? 1.0 : 0.3);
+                } else {
+                    onMeans.push(null); onP2_5.push(null); onP97_5.push(null); onCounts.push(null);
+                    onOpacities.push(0.3); // Default opacity for non-existent bars
+                }
+
+                // Populate OFF arrays and determine opacity
+                if (offDataInBin) {
+                    offMeans.push(offDataInBin.mean);
+                    offP2_5.push(offDataInBin.p2_5);
+                    offP97_5.push(offDataInBin.p97_5);
+                    offCounts.push(offDataInBin.count);
+                    offOpacities.push(isReliableOffInBin && isReliableOnInBin ? 1.0 : 0.3);
+                } else {
+                    offMeans.push(null); offP2_5.push(null); offP97_5.push(null); offCounts.push(null);
+                    offOpacities.push(0.3); // Default opacity for non-existent bars
+                }
+            });
+            
+            // Helper for error bars (asymmetric based on p2.5 and p97.5)
+            const getErrorArray = (means, p_lower, p_upper) => means.map((mean, i) => (p_upper[i] && mean) ? p_upper[i] - mean : 0);
+            const getErrorArrayMinus = (means, p_lower, p_upper) => means.map((mean, i) => (p_lower[i] && mean) ? mean - p_lower[i] : 0);
+
+
+            const traceOn = {
+                x: uniqueTempBins, y: onMeans, name: 'Control = ON', type: 'bar',
+                marker: { color: '#e2673b', opacity: onOpacities },
+                error_y: { type: 'data', symmetric: false, array: getErrorArray(onMeans, onP2_5, onP97_5), arrayminus: getErrorArrayMinus(onMeans, onP2_5, onP97_5), visible: true, color: 'rgba(140, 50, 20, 0.85)' },
+                customdata: onCounts.map((c, i) => `Samples: ${c}<br>95% Range: ${onP2_5[i]?.toFixed(2)} - ${onP97_5[i]?.toFixed(2)}`),
+                hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>'
+            };
+            const traceOff = {
+                x: uniqueTempBins, y: offMeans, name: 'Control = OFF', type: 'bar',
+                marker: { color: '#c6cacc', opacity: offOpacities },
+                error_y: { type: 'data', symmetric: false, array: getErrorArray(offMeans, offP2_5, offP97_5), arrayminus: getErrorArrayMinus(offMeans, offP2_5, offP97_5), visible: true, color: 'rgba(100, 105, 108, 0.9)' },
+                customdata: offCounts.map((c, i) => `Samples: ${c}<br>95% Range: ${offP2_5[i]?.toFixed(2)} - ${offP97_5[i]?.toFixed(2)}`),
+                hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>'
+            };
+
+            const layout = {
+                title: `Temperature Normalized Analysis: ${signalName} (${dayType})`,
+                barmode: 'group',
+                xaxis: { title: 'Outdoor Temperature Bin (°C)', tickvals: uniqueTempBins, ticktext: uniqueTempBins.map(b => `${b}-${b+2}°C`) },
+                yaxis: { title: signalName }
+            };
+            Plotly.newPlot(chartDiv, [traceOff, traceOn], layout, {responsive: true});
+            
+            // Calculate Temperature Distribution
+            const tempDistribution = dataWithBins.reduce((acc, row) => {
+                acc[row.temp_bin] = (acc[row.temp_bin] || 0) + 1;
+                return acc;
+            }, {});
+            const tempDistLayout = {
+                title: `Temperature Occurrence Distribution (${dayType} Filtered Data)`,
+                xaxis: { title: 'Outdoor Temperature Bin (°C)', tickvals: uniqueTempBins, ticktext: uniqueTempBins.map(b => `${b}-${b+2}°C`) },
+                yaxis: { title: 'Number of Hours' },
+                height: 200,
+                margin: { t: 30, b: 50, l:50, r:10 }
+            };
+            Plotly.newPlot(tempDistChartDiv, [{ x: Object.keys(tempDistribution), y: Object.values(tempDistribution), type: 'bar', name: 'Hours', marker: {color: '#464646'}}], tempDistLayout, {responsive: true});
+
+
+            // 4. Calculate Impact Metrics (Simple Average Difference, Weighted, etc.)
+            let reliableBinDifferences = [];
+            let reliableOffMeansForOverallAvg = [];
+            let totalWeightForWeightedCalc = 0;
+            let weightedSumOfDifferences = 0;
+            
+            uniqueTempBins.forEach(bin => {
+                const onData = statsByBin[`${bin}_1`];
+                const offData = statsByBin[`${bin}_0`];
+
+                if (onData && offData && onData.isReliable && offData.isReliable) {
+                    reliableBinDifferences.push(onData.mean - offData.mean);
+                    reliableOffMeansForOverallAvg.push(offData.mean);
+                    
+                    // For weighted calculation
+                    const binWeight = tempDistribution[bin] || 0; // Occurrence of this temp bin
+                    if (binWeight > 0) {
+                        weightedSumOfDifferences += (onData.mean - offData.mean) * binWeight;
+                        totalWeightForWeightedCalc += binWeight;
+                    }
+                }
+            });
+
+            let simpleAvgDiff = 0, simplePctDiff = 0, weightedAvgDiff = 0, weightedPctDiff = 0;
+            let originalSimplePctDiff = 0, originalWeightedPctDiff = 0; // To store pre-affinity values
+
+            if (reliableBinDifferences.length > 0) {
+                simpleAvgDiff = reliableBinDifferences.reduce((sum, diff) => sum + diff, 0) / reliableBinDifferences.length;
+                const overallReliableOffMean = reliableOffMeansForOverallAvg.reduce((sum, val) => sum + val, 0) / reliableOffMeansForOverallAvg.length;
+                if (overallReliableOffMean !== 0) {
+                    simplePctDiff = (simpleAvgDiff / Math.abs(overallReliableOffMean)) * 100;
+                }
+            }
+            originalSimplePctDiff = simplePctDiff; // Store before affinity law
+
+            if (totalWeightForWeightedCalc > 0) {
+                weightedAvgDiff = weightedSumOfDifferences / totalWeightForWeightedCalc;
+                let weightedSumOfOffValues = 0;
+                uniqueTempBins.forEach(bin => {
+                    const offData = statsByBin[`${bin}_0`];
+                    if (offData && offData.isReliable) {
+                        const binWeight = tempDistribution[bin] || 0;
+                        if (binWeight > 0) {
+                             weightedSumOfOffValues += offData.mean * binWeight;
+                        }
+                    }
+                });
+                const weightedOverallOffMean = weightedSumOfOffValues / totalWeightForWeightedCalc;
+                if (weightedOverallOffMean !== 0) {
+                    weightedPctDiff = (weightedAvgDiff / Math.abs(weightedOverallOffMean)) * 100;
+                }
+            }
+            originalWeightedPctDiff = weightedPctDiff; // Store before affinity law
+
+            let simpleAffinityPctDiff = null;
+            let weightedAffinityPctDiff = null;
+
+            if (applyAffinity) {
+                if (simplePctDiff !== null) {
+                    simpleAffinityPctDiff = (Math.pow(1 + originalSimplePctDiff / 100, 1.5) - 1) * 100; // Use original for calculation
+                }
+                if (weightedPctDiff !== null) {
+                    weightedAffinityPctDiff = (Math.pow(1 + originalWeightedPctDiff / 100, 1.5) - 1) * 100; // Use original for calculation
+                }
+            }
+            
+            // Uptime calculation (simplified) - should use dayFilteredData for context if uptime is per dayType
+            const onHours = dayFilteredData.filter(r => r.control_state === 1).length;
+            // To calculate uptime percentage *within this specific dayType and other filters*:
+            const totalHoursWithStateInDayType = dayFilteredData.filter(r => r.control_state !== undefined).length;
+            const uptimePercentage = totalHoursWithStateInDayType > 0 ? (onHours / totalHoursWithStateInDayType) * 100 : 0;
+            const uptimeFactor = uptimePercentage / 100;
+
+            metricsDiv.innerHTML = `
+                <div class="metric">
+                    <h4>Simple Avg Diff (ON-OFF)</h4>
+                    <div class="value">${simpleAvgDiff.toFixed(2)}</div>
+                    <div class="delta ${originalSimplePctDiff > 0 ? 'positive' : 'negative'}">
+                        ${applyAffinity && simpleAffinityPctDiff !== null ? simpleAffinityPctDiff.toFixed(1) + '%' : originalSimplePctDiff.toFixed(1) + '%'}
+                    </div>
+                    <div class="caption">Uptime Corrected: ${(simpleAvgDiff * uptimeFactor).toFixed(2)} (${applyAffinity && simpleAffinityPctDiff !== null ? (simpleAffinityPctDiff*uptimeFactor).toFixed(1) + '%' : (originalSimplePctDiff*uptimeFactor).toFixed(1) + '%'})</div>
+                </div>
+                <div class="metric">
+                    <h4>Temp-Weighted Avg Diff</h4>
+                    <div class="value">${weightedAvgDiff.toFixed(2)}</div>
+                    <div class="delta ${originalWeightedPctDiff > 0 ? 'positive' : 'negative'}">
+                         ${applyAffinity && weightedAffinityPctDiff !== null ? weightedAffinityPctDiff.toFixed(1) + '%' : originalWeightedPctDiff.toFixed(1) + '%'}
+                    </div>
+                     <div class="caption">Uptime Corrected: ${(weightedAvgDiff * uptimeFactor).toFixed(2)} (${applyAffinity && weightedAffinityPctDiff !== null ? (weightedAffinityPctDiff*uptimeFactor).toFixed(1) + '%' : (originalWeightedPctDiff*uptimeFactor).toFixed(1) + '%'})</div>
+                </div>
+                <div class="metric">
+                    <h4>Uptime in Filtered Period (${dayType})</h4>
+                    <div class="value">${uptimePercentage.toFixed(1)}%</div>
+                    <div class="caption">${onHours} ON hours out of ${totalHoursWithStateInDayType} total</div>
+                </div>
+            `;
+            
+            interpretationDiv.innerHTML = `
+                <p><strong>Simple Average Interpretation (${dayType}):</strong> On average, when the control is ON, the ${signalName} value is 
+                <strong>${Math.abs(simpleAvgDiff).toFixed(2)} (${applyAffinity && simpleAffinityPctDiff !== null ? simpleAffinityPctDiff.toFixed(1) + '%' : originalSimplePctDiff.toFixed(1) + '%'}) ${simpleAvgDiff > 0 ? "higher" : "lower"}</strong> 
+                compared to when OFF, under similar outdoor temperatures. 
+                (Based on ${reliableBinDifferences.length} reliable temperature bins for ${dayType}).</p>
+                <p><strong>Temperature-Occurrence-Weighted Interpretation (${dayType}):</strong> Accounting for temperature frequency, the weighted impact is 
+                <strong>${Math.abs(weightedAvgDiff).toFixed(2)} (${applyAffinity && weightedAffinityPctDiff !== null ? weightedAffinityPctDiff.toFixed(1) + '%' : originalWeightedPctDiff.toFixed(1) + '%'}) ${weightedAvgDiff > 0 ? "higher" : "lower"}</strong>.
+                This better reflects typical impact for ${dayType}.</p>
+                <p><strong>Uptime Correction:</strong> Values in (parentheses) in the metrics are adjusted by the ${uptimePercentage.toFixed(1)}% uptime of the control signal in the analyzed period for ${dayType}.</p>
+                <p class="caption" style="font-size:0.8em;"><strong>Note about faded bars:</strong> Faded/transparent bars indicate that either the bar itself, or its corresponding ON/OFF counterpart in the same temperature bin, has fewer than ${MIN_SAMPLES_PER_BIN} hourly samples. Such bins may not be statistically reliable for direct ON vs. OFF comparison and are generally excluded from overall average calculations (which only use bins reliable for both states).</p>
+            `;
+
+        }
+
+        function populateDayAnalysisTabs() {
+            const tabsContainer = document.getElementById('dayAnalysisTabs');
+            tabsContainer.innerHTML = ''; // Clear existing tabs
+
+            const dayTypes = ['All Days', 'Weekdays', 'Weekends', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+            dayTypes.forEach((dayType, index) => {
+                const button = document.createElement('button');
+                button.textContent = dayType;
+                button.dataset.daytype = dayType; // Store dayType for click handler
+                if (index === 0) { // Make "All Days" active by default
+                    button.classList.add('active');
+                }
+                button.addEventListener('click', () => showDayAnalysis(dayType));
+                tabsContainer.appendChild(button);
+            });
+        }
+
+        function showDayAnalysis(dayType) {
+            window.scrollTo(0, document.getElementById('dayAnalysisTabs').offsetTop - 10); // Scroll near tabs
+            document.querySelectorAll('#dayAnalysisTabs button').forEach(btn => btn.classList.remove('active'));
+            const clickedButton = Array.from(document.querySelectorAll('#dayAnalysisTabs button')).find(button => button.dataset.daytype === dayType);
+            if(clickedButton) clickedButton.classList.add('active');
+
+            // Re-run temperature analysis for the selected day type and current signal
+            if (filteredData.length > 0) {
+                const selectedSignal = document.getElementById('signalForAnalysisSelect').value;
+                if (selectedSignal) {
+                    performTemperatureAnalysis(filteredData, selectedSignal, dayType);
+                }
+            }
+        }
+
+        // --- Init ---
+        navigateToPage('welcome'); // Start at the welcome page
+
+
+    </script>
+</body>
+</html>
