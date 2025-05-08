@@ -85,6 +85,54 @@
         .tooltip { position: relative; display: inline-block; cursor: help; }
         .tooltip .tooltiptext { visibility: hidden; width: 250px; background-color: #555; color: #fff; text-align: left; border-radius: 6px; padding: 8px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -125px; opacity: 0; transition: opacity 0.3s; font-size: 0.9em;}
         .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+
+        @media (max-width: 768px) {
+            nav#mainNav {
+                flex-direction: column;
+                align-items: stretch; /* Make buttons take full width */
+            }
+            nav#mainNav button {
+                width: 100%;
+                margin-top: 5px;
+                margin-bottom: 5px; /* Add some space between stacked buttons */
+                box-sizing: border-box; /* Ensure padding/border don't make it wider than 100% */
+            }
+            .chart-container {
+                min-height: 250px; /* Reduced min-height for mobile */
+            }
+            #tempDistChart.chart-container {
+                min-height: 120px; /* Further reduced min-height for the smaller temp distribution chart */
+            }
+            .container {
+                margin: 10px auto; /* Reduce margin for smaller screens */
+                padding: 10px; /* Reduce padding for smaller screens */
+            }
+            header {
+                padding: 15px;
+            }
+            header h1 {
+                font-size: 1.4em; /* Smaller header text */
+            }
+            h2 {
+                font-size: 1.2em;
+            }
+            h3 {
+                font-size: 1.05em;
+            }
+            .metrics-grid {
+                grid-template-columns: 1fr; /* Stack metrics on mobile */
+            }
+            select, input[type="number"], input[type="text"], input[type="datetime-local"], input[type="file"] {
+                padding: 8px; /* Slightly reduce padding on form elements */
+            }
+            button.action-button {
+                padding: 8px 12px;
+                font-size: 15px;
+            }
+            .explanation {
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 <body>
