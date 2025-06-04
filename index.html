@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Building Data Analyzer</title>
-    <!-- Plotly.js via CDN -->
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js" charset="utf-8"></script>
-    <!-- PapaParse for CSV parsing via CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-    <!-- SheetJS (xlsx.js) for Excel parsing via CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
@@ -158,6 +155,17 @@
                 <p>This tool is the current workhorse powering all impact analytics on building energy performance conducted by Myrspoven AB in Stockholm. We are making it open and available because we believe this methodology offers a significantly more robust and accurate approach compared to traditional methods like 'heat load signatures' or 'degree-day corrections'.</p>
                 <h4>Open Source and Community</h4>
                 <p>This tool is fully open source! We believe in transparency and collaborative improvement. Contributions, suggestions, and feedback are highly encouraged. You can find the project and contribute on <a href="https://github.com/maxberggren/analyze-my-building" target="_blank">GitHub</a></p>
+                
+                <h4>Changelog</h4>
+                <div style="margin-top: 15px;">
+                    <h5 style="color: #005792; margin-bottom: 5px;">2025-01-05 - Temperature Analysis Enhancements</h5>
+                    <ul style="margin-left: 20px; font-size: 0.95em;">
+                        <li><strong>New Feature:</strong> Added "Average of signals..." option in temperature analysis, allowing users to analyze the combined effect of multiple signals by calculating their arithmetic mean for each data point.</li>
+                        <li><strong>Improved Visualization:</strong> Fixed error bar (whisker) styling for unreliable data bins - they now properly appear dimmed with matching colors and opacity to their corresponding bars.</li>
+                        <li><strong>Better Data Separation:</strong> Reliable and unreliable data are now displayed as separate traces with consistent styling, making it clearer which temperature bins contribute to the analysis calculations.</li>
+                        <li><strong>Enhanced User Experience:</strong> Multiple signal selection is intuitive with clear instructions, and the interface dynamically updates to show what signals are being averaged.</li>
+                    </ul>
+                </div>
             </div>
         </div>
 
@@ -272,7 +280,6 @@
                 <select id="controlType">
                     <option value="threshold">Threshold-based (for numeric signals)</option>
                     <option value="date_range">Split by date ranges (manual ON/OFF periods)</option>
-                    <!-- Add more types if needed, like "Average of AI_Sts" from original script -->
                 </select>
 
                 <div id="thresholdConfig">
@@ -413,7 +420,13 @@
                      <div id="temperatureAnalysisControls">
                         <label for="signalForAnalysisSelect">Select Signal for Temperature Analysis:</label>
                         <select id="signalForAnalysisSelect"></select>
-                        <!-- Affinity law checkbox removed from here -->
+                        
+                        <!-- New multiple select for averaging signals -->
+                        <div id="averageSignalsContainer" style="display: none; margin-top: 10px;">
+                            <label for="averageSignalsSelect">Select signals to average:</label>
+                            <select id="averageSignalsSelect" multiple size="6" style="width: 100%; margin-bottom: 10px;"></select>
+                            <p style="font-size: 0.9em; color: #666; margin: 0;">Hold Ctrl (Cmd on Mac) to select multiple signals</p>
+                        </div>
                     </div>
 
                     <!-- Day Specific Tabs -->
@@ -442,6 +455,7 @@
                                 <ul>
                                     <li>The data is filtered based on all your selections (date ranges, control definition, outdoor temperature range, hour of day range).</li>
                                     <li>The chosen "Signal for Analysis" (e.g., Supply Air Temperature) is isolated.</li>
+                                    <li><strong>Average of Signals:</strong> When "Average of signals..." is selected, the tool calculates the arithmetic mean of the selected signals for each data point. Only data points where at least one of the selected signals has a valid numeric value are included, and the average is calculated using only the valid values for that timestamp.</li>
                                 </ul>
                             </li>
                             <li><strong>Temperature Binning <span class="tooltip">(i)<span class="tooltiptext">Grouping data into temperature ranges (e.g., 0-2°C, 2-4°C) to compare ON/OFF states under similar conditions.</span></span>:</strong>
@@ -1080,15 +1094,34 @@
             // Specific setup for temperature analysis signal selection
             // const signalCategorySelect = document.getElementById('signalCategorySelect'); // Removed
             const signalForAnalysisSelect = document.getElementById('signalForAnalysisSelect');
+            const averageSignalsSelect = document.getElementById('averageSignalsSelect');
+            const averageSignalsContainer = document.getElementById('averageSignalsContainer');
+            
             // signalCategorySelect.innerHTML = ''; // Clear // Removed
             signalForAnalysisSelect.innerHTML = ''; // Clear
+            averageSignalsSelect.innerHTML = ''; // Clear
             
+            // Add regular signal options
             config.analysisSignalColumns.forEach(sigName => {
                 const sigOption = document.createElement('option');
                 sigOption.value = sigName;
                 sigOption.textContent = sigName;
                 signalForAnalysisSelect.appendChild(sigOption);
+                
+                // Also add to average signals select
+                const avgOption = document.createElement('option');
+                avgOption.value = sigName;
+                avgOption.textContent = sigName;
+                averageSignalsSelect.appendChild(avgOption);
             });
+            
+            // Add "Average of signals..." option
+            if (config.analysisSignalColumns.length > 1) {
+                const avgOption = document.createElement('option');
+                avgOption.value = 'AVERAGE_OF_SIGNALS';
+                avgOption.textContent = 'Average of signals...';
+                signalForAnalysisSelect.appendChild(avgOption);
+            }
             
             if (config.analysisSignalColumns.length > 0) {
                  signalForAnalysisSelect.value = config.analysisSignalColumns[0]; // Select first by default
@@ -1097,7 +1130,15 @@
 
             signalForAnalysisSelect.onchange = function() {
                 const selectedSignal = this.value;
-                document.getElementById('currentSignalForTempAnalysis').textContent = selectedSignal;
+                
+                if (selectedSignal === 'AVERAGE_OF_SIGNALS') {
+                    averageSignalsContainer.style.display = 'block';
+                    document.getElementById('currentSignalForTempAnalysis').textContent = 'Average of Selected Signals';
+                } else {
+                    averageSignalsContainer.style.display = 'none';
+                    document.getElementById('currentSignalForTempAnalysis').textContent = selectedSignal;
+                }
+                
                 // Trigger re-render of the temp analysis chart if visible and data exists
                 const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
                 const dayType = activeDayTab ? activeDayTab.dataset.daytype : 'All Days';
@@ -1105,6 +1146,25 @@
                     performTemperatureAnalysis(filteredData, selectedSignal, dayType);
                 }
             };
+            
+            // Add event listener for multiple select changes
+            averageSignalsSelect.addEventListener('change', function() {
+                if (signalForAnalysisSelect.value === 'AVERAGE_OF_SIGNALS') {
+                    const selectedSignals = Array.from(this.selectedOptions).map(opt => opt.value);
+                    if (selectedSignals.length > 0) {
+                        document.getElementById('currentSignalForTempAnalysis').textContent = `Average of ${selectedSignals.length} signals (${selectedSignals.join(', ')})`;
+                        
+                        // Trigger re-render
+                        const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
+                        const dayType = activeDayTab ? activeDayTab.dataset.daytype : 'All Days';
+                        if (document.getElementById('temperatureAnalysisSection').classList.contains('active') && filteredData.length > 0) {
+                            performTemperatureAnalysis(filteredData, 'AVERAGE_OF_SIGNALS', dayType);
+                        }
+                    } else {
+                        document.getElementById('currentSignalForTempAnalysis').textContent = 'Average of Selected Signals';
+                    }
+                }
+            });
 
             // Add event listener for the new Affinity Law checkbox
             document.getElementById('applyAffinityLaw').addEventListener('change', function() {
@@ -1252,12 +1312,24 @@
                 chartDiv.innerHTML = "<p>Not enough data or no signal selected for temperature analysis.</p>";
                 return;
             }
-             // Ensure the signal exists and has numeric data -> This check is MOVED to after dayType filtering
-            // const sampleSignalValue = data[0][signalName]; 
-            // if (typeof sampleSignalValue !== 'number') { 
-            //     chartDiv.innerHTML = `<p>Signal "${signalName}" does not contain numeric data or is not mapped correctly.</p>`;
-            //     return;
-            // }
+            
+            // Handle averaging of multiple signals
+            let actualSignalName = signalName;
+            let selectedSignalsForAverage = [];
+            
+            if (signalName === 'AVERAGE_OF_SIGNALS') {
+                const averageSignalsSelect = document.getElementById('averageSignalsSelect');
+                selectedSignalsForAverage = Array.from(averageSignalsSelect.selectedOptions).map(opt => opt.value);
+                
+                if (selectedSignalsForAverage.length === 0) {
+                    chartDiv.innerHTML = "<p>Please select at least one signal to average.</p>";
+                    return;
+                }
+                
+                actualSignalName = `Average of ${selectedSignalsForAverage.length} signals`;
+                // Update the display name
+                document.getElementById('currentSignalForTempAnalysis').textContent = `Average of ${selectedSignalsForAverage.length} signals (${selectedSignalsForAverage.join(', ')})`;
+            }
 
             // --- Day Type Filtering ---
             let dayFilteredData = data;
@@ -1273,7 +1345,7 @@
             // If "All Days", no additional filtering needed beyond what `data` already represents.
 
             if (dayFilteredData.length === 0) {
-                chartDiv.innerHTML = `<p>No data available for signal \"${signalName}\" for ${dayType}.</p>`;
+                chartDiv.innerHTML = `<p>No data available for signal \"${actualSignalName}\" for ${dayType}.</p>`;
                 metricsDiv.innerHTML = '';
                 interpretationDiv.innerHTML = '';
                 tempDistChartDiv.innerHTML = '';
@@ -1281,20 +1353,37 @@
             }
             // --- End Day Type Filtering ---
 
-             // Ensure the signal exists and has numeric data in the dayFilteredData
-            const sampleSignalValue = dayFilteredData[0]?.[signalName]; // Check first element of day-filtered data
-            if (typeof sampleSignalValue !== 'number') {
-                chartDiv.innerHTML = `<p>Signal \"${signalName}\" does not contain numeric data or is not mapped correctly for ${dayType}.</p>`;
+            // Function to calculate signal value (single signal or average)
+            const getSignalValue = (row) => {
+                if (signalName === 'AVERAGE_OF_SIGNALS') {
+                    // Calculate average of selected signals
+                    const values = selectedSignalsForAverage
+                        .map(sigName => row[sigName])
+                        .filter(val => typeof val === 'number' && !isNaN(val));
+                    
+                    if (values.length === 0) return NaN;
+                    return values.reduce((sum, val) => sum + val, 0) / values.length;
+                } else {
+                    return row[signalName];
+                }
+            };
+
+            // Validate that we have numeric data
+            const sampleSignalValue = getSignalValue(dayFilteredData[0]);
+            if (typeof sampleSignalValue !== 'number' || isNaN(sampleSignalValue)) {
+                chartDiv.innerHTML = `<p>Signal \"${actualSignalName}\" does not contain valid numeric data for ${dayType}.</p>`;
                 return;
             }
 
-
             // 1. Bin data by temperature (e.g., 2 degree bins) - USE dayFilteredData
-            const dataWithBins = dayFilteredData.map(row => ({
-                ...row,
-                temp_bin: Math.floor(row.t / 2) * 2, // 2-degree bins
-                signalValue: row[signalName] // The specific signal we're analyzing
-            })).filter(row => !isNaN(row.signalValue) && row.control_state !== undefined);
+            const dataWithBins = dayFilteredData.map(row => {
+                const signalValue = getSignalValue(row);
+                return {
+                    ...row,
+                    temp_bin: Math.floor(row.t / 2) * 2, // 2-degree bins
+                    signalValue: signalValue // The specific signal we're analyzing (or average)
+                };
+            }).filter(row => !isNaN(row.signalValue) && row.control_state !== undefined);
 
 
             // 2. Group by temp_bin and control_state, then calculate stats
@@ -1371,29 +1460,122 @@
             const getErrorArray = (means, p_lower, p_upper) => means.map((mean, i) => (p_upper[i] && mean) ? p_upper[i] - mean : 0);
             const getErrorArrayMinus = (means, p_lower, p_upper) => means.map((mean, i) => (p_lower[i] && mean) ? mean - p_lower[i] : 0);
 
+            // Separate data into reliable and unreliable sets
+            const reliableOnData = { x: [], y: [], errors_array: [], errors_arrayminus: [], customdata: [] };
+            const unreliableOnData = { x: [], y: [], errors_array: [], errors_arrayminus: [], customdata: [] };
+            const reliableOffData = { x: [], y: [], errors_array: [], errors_arrayminus: [], customdata: [] };
+            const unreliableOffData = { x: [], y: [], errors_array: [], errors_arrayminus: [], customdata: [] };
 
-            const traceOn = {
-                x: uniqueTempBins, y: onMeans, name: 'Control = ON', type: 'bar',
-                marker: { color: '#e2673b', opacity: onOpacities },
-                error_y: { type: 'data', symmetric: false, array: getErrorArray(onMeans, onP2_5, onP97_5), arrayminus: getErrorArrayMinus(onMeans, onP2_5, onP97_5), visible: true, color: 'rgba(140, 50, 20, 0.85)' },
-                customdata: onCounts.map((c, i) => `Samples: ${c}<br>95% Range: ${onP2_5[i]?.toFixed(2)} - ${onP97_5[i]?.toFixed(2)}`),
-                hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>'
-            };
-            const traceOff = {
-                x: uniqueTempBins, y: offMeans, name: 'Control = OFF', type: 'bar',
-                marker: { color: '#c6cacc', opacity: offOpacities },
-                error_y: { type: 'data', symmetric: false, array: getErrorArray(offMeans, offP2_5, offP97_5), arrayminus: getErrorArrayMinus(offMeans, offP2_5, offP97_5), visible: true, color: 'rgba(100, 105, 108, 0.9)' },
-                customdata: offCounts.map((c, i) => `Samples: ${c}<br>95% Range: ${offP2_5[i]?.toFixed(2)} - ${offP97_5[i]?.toFixed(2)}`),
-                hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>'
-            };
+            uniqueTempBins.forEach((bin, i) => {
+                const isReliable = onOpacities[i] === 1.0 && offOpacities[i] === 1.0;
+                
+                if (onMeans[i] !== null) {
+                    const onData = isReliable ? reliableOnData : unreliableOnData;
+                    onData.x.push(bin);
+                    onData.y.push(onMeans[i]);
+                    onData.errors_array.push(onP97_5[i] ? onP97_5[i] - onMeans[i] : 0);
+                    onData.errors_arrayminus.push(onP2_5[i] ? onMeans[i] - onP2_5[i] : 0);
+                    onData.customdata.push(`Samples: ${onCounts[i]}<br>95% Range: ${onP2_5[i]?.toFixed(2)} - ${onP97_5[i]?.toFixed(2)}`);
+                }
+                
+                if (offMeans[i] !== null) {
+                    const offData = isReliable ? reliableOffData : unreliableOffData;
+                    offData.x.push(bin);
+                    offData.y.push(offMeans[i]);
+                    offData.errors_array.push(offP97_5[i] ? offP97_5[i] - offMeans[i] : 0);
+                    offData.errors_arrayminus.push(offP2_5[i] ? offMeans[i] - offP2_5[i] : 0);
+                    offData.customdata.push(`Samples: ${offCounts[i]}<br>95% Range: ${offP2_5[i]?.toFixed(2)} - ${offP97_5[i]?.toFixed(2)}`);
+                }
+            });
+
+            // Create traces with proper error bar styling
+            const traces = [];
+            
+            // Reliable ON data
+            if (reliableOnData.x.length > 0) {
+                traces.push({
+                    x: reliableOnData.x, y: reliableOnData.y, name: 'Control = ON', type: 'bar',
+                    marker: { color: '#e2673b' },
+                    width: 0.7,
+                    error_y: { 
+                        type: 'data', symmetric: false, 
+                        array: reliableOnData.errors_array, 
+                        arrayminus: reliableOnData.errors_arrayminus, 
+                        visible: true, 
+                        color: 'rgba(140, 50, 20, 0.85)',
+                        thickness: 1.5
+                    },
+                    customdata: reliableOnData.customdata,
+                    hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>'
+                });
+            }
+            
+            // Unreliable ON data (faded)
+            if (unreliableOnData.x.length > 0) {
+                traces.push({
+                    x: unreliableOnData.x, y: unreliableOnData.y, name: 'Control = ON (unreliable)', type: 'bar',
+                    marker: { color: 'rgba(226, 103, 59, 0.3)' },
+                    width: 0.7,
+                    error_y: { 
+                        type: 'data', symmetric: false, 
+                        array: unreliableOnData.errors_array, 
+                        arrayminus: unreliableOnData.errors_arrayminus, 
+                        visible: true, 
+                        color: 'rgba(140, 50, 20, 0.3)',
+                        thickness: 1.5
+                    },
+                    customdata: unreliableOnData.customdata,
+                    hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>',
+                    showlegend: false
+                });
+            }
+            
+            // Reliable OFF data
+            if (reliableOffData.x.length > 0) {
+                traces.push({
+                    x: reliableOffData.x, y: reliableOffData.y, name: 'Control = OFF', type: 'bar',
+                    marker: { color: '#c6cacc' },
+                    width: 0.7,
+                    error_y: { 
+                        type: 'data', symmetric: false, 
+                        array: reliableOffData.errors_array, 
+                        arrayminus: reliableOffData.errors_arrayminus, 
+                        visible: true, 
+                        color: 'rgba(100, 105, 108, 0.9)',
+                        thickness: 1.5
+                    },
+                    customdata: reliableOffData.customdata,
+                    hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>'
+                });
+            }
+            
+            // Unreliable OFF data (faded)
+            if (unreliableOffData.x.length > 0) {
+                traces.push({
+                    x: unreliableOffData.x, y: unreliableOffData.y, name: 'Control = OFF (unreliable)', type: 'bar',
+                    marker: { color: 'rgba(198, 202, 204, 0.3)' },
+                    width: 0.7,
+                    error_y: { 
+                        type: 'data', symmetric: false, 
+                        array: unreliableOffData.errors_array, 
+                        arrayminus: unreliableOffData.errors_arrayminus, 
+                        visible: true, 
+                        color: 'rgba(100, 105, 108, 0.3)',
+                        thickness: 1.5
+                    },
+                    customdata: unreliableOffData.customdata,
+                    hovertemplate: 'Temp Bin: %{x}°C<br>Mean: %{y:.2f}<br>%{customdata}<extra></extra>',
+                    showlegend: false
+                });
+            }
 
             const layout = {
-                title: `Temperature Normalized Analysis: ${signalName} (${dayType})`,
+                title: `Temperature Normalized Analysis: ${actualSignalName} (${dayType})`,
                 barmode: 'group',
                 xaxis: { title: 'Outdoor Temperature Bin (°C)', tickvals: uniqueTempBins, ticktext: uniqueTempBins.map(b => `${b}-${b+2}°C`) },
-                yaxis: { title: signalName }
+                yaxis: { title: actualSignalName }
             };
-            Plotly.newPlot(chartDiv, [traceOff, traceOn], layout, {responsive: true});
+            Plotly.newPlot(chartDiv, traces, layout, {responsive: true});
             
             // Calculate Temperature Distribution
             const tempDistribution = dataWithBins.reduce((acc, row) => {
@@ -1508,7 +1690,7 @@
             `;
             
             interpretationDiv.innerHTML = `
-                <p><strong>Simple Average Interpretation (${dayType}):</strong> On average, when the control is ON, the ${signalName} value is 
+                <p><strong>Simple Average Interpretation (${dayType}):</strong> On average, when the control is ON, the ${actualSignalName} value is 
                 <strong>${Math.abs(simpleAvgDiff).toFixed(2)} (${applyAffinity && simpleAffinityPctDiff !== null ? simpleAffinityPctDiff.toFixed(1) + '%' : originalSimplePctDiff.toFixed(1) + '%'}) ${simpleAvgDiff > 0 ? "higher" : "lower"}</strong> 
                 compared to when OFF, under similar outdoor temperatures. 
                 (Based on ${reliableBinDifferences.length} reliable temperature bins for ${dayType}).</p>
