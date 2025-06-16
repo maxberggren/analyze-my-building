@@ -421,18 +421,11 @@
                         <label for="signalForAnalysisSelect">Select Signal for Temperature Analysis:</label>
                         <select id="signalForAnalysisSelect"></select>
                         
-                        <!-- New multiple select for averaging signals -->
+                        <!-- Multiple select for averaging signals -->
                         <div id="averageSignalsContainer" style="display: none; margin-top: 10px;">
                             <label for="averageSignalsSelect">Select signals to average:</label>
                             <select id="averageSignalsSelect" multiple size="6" style="width: 100%; margin-bottom: 10px;"></select>
                             <p style="font-size: 0.9em; color: #666; margin: 0;">Hold Ctrl (Cmd on Mac) to select multiple signals</p>
-                        </div>
-                        
-                        <!-- New checkbox for heating circuit normalization -->
-                        <div style="margin-top: 10px;">
-                            <input type="checkbox" id="normalizeHeatingTemp" name="normalizeHeatingTemp" style="margin-right: 5px; vertical-align: middle;">
-                            <label for="normalizeHeatingTemp" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Normalize set temperatures for heating circuits to 20ºC</label>
-                            <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">For heating circuit set temperatures, this will calculate percentage impact relative to the difference from 20ºC, which is a typical indoor temperature target.</span></span>
                         </div>
                     </div>
 
@@ -445,12 +438,19 @@
                     <div id="tempDistChart" class="chart-container" style="min-height: 150px;"></div> <!-- For temperature distribution -->
                     <div class="metrics-grid" id="tempAnalysisMetrics"></div>
                     
-                    <!-- Affinity Law Checkbox - New Location -->
-                    <div class="config-section" style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;">
-                        <input type="checkbox" id="applyAffinityLaw" name="applyAffinityLaw" style="margin-right: 5px; vertical-align: middle;">
-                        <label for="applyAffinityLaw" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Apply Affinity Law Correction (for Fan/Pump Pressure signals)</label>
-                        <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">Estimates power change from pressure change using Power ∝ Pressure<sup>1.5</sup>. Check this if analyzing a pressure signal related to fan or pump energy.</span></span>
-                    </div>
+                                <!-- Analysis Corrections Section -->
+            <div class="config-section" style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;">
+                <div style="margin-bottom: 10px;">
+                    <input type="checkbox" id="applyAffinityLaw" name="applyAffinityLaw" style="margin-right: 5px; vertical-align: middle;">
+                    <label for="applyAffinityLaw" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Apply Affinity Law Correction (for Fan/Pump Pressure signals)</label>
+                    <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">Estimates power change from pressure change using Power ∝ Pressure<sup>1.5</sup>. Check this if analyzing a pressure signal related to fan or pump energy.</span></span>
+                </div>
+                <div>
+                    <input type="checkbox" id="normalizeHeatingTemp" name="normalizeHeatingTemp" style="margin-right: 5px; vertical-align: middle;">
+                    <label for="normalizeHeatingTemp" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Normalize set temperatures for heating circuits to 20ºC</label>
+                    <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">For heating circuit set temperatures, this will calculate percentage impact relative to the difference from 20ºC, which is a typical indoor temperature target.</span></span>
+                </div>
+            </div>
 
                     <div id="tempAnalysisInterpretation" class="explanation"></div>
                     <div class="explanation" style="margin-top: 20px;">
@@ -1730,12 +1730,10 @@
                 <p><strong>Simple Average Interpretation (${dayType}):</strong> On average, when the control is ON, the ${actualSignalName} value is 
                 <strong>${Math.abs(simpleAvgDiff).toFixed(2)} (${applyAffinity && simpleAffinityPctDiff !== null ? simpleAffinityPctDiff.toFixed(1) + '%' : originalSimplePctDiff.toFixed(1) + '%'}) ${simpleAvgDiff > 0 ? "higher" : "lower"}</strong> 
                 compared to when OFF, under similar outdoor temperatures. 
-                ${normalizeHeatingTemp ? `<em>(Percentage normalized relative to difference from 20ºC target temperature)</em>` : ''}
                 (Based on ${reliableBinDifferences.length} reliable temperature bins for ${dayType}).</p>
                 <p><strong>Temperature-Occurrence-Weighted Interpretation (${dayType}):</strong> Accounting for temperature frequency, the weighted impact is 
                 <strong>${Math.abs(weightedAvgDiff).toFixed(2)} (${applyAffinity && weightedAffinityPctDiff !== null ? weightedAffinityPctDiff.toFixed(1) + '%' : originalWeightedPctDiff.toFixed(1) + '%'}) ${weightedAvgDiff > 0 ? "higher" : "lower"}</strong>.
-                This better reflects typical impact for ${dayType}.
-                ${normalizeHeatingTemp ? `<em>(Percentage normalized relative to difference from 20ºC target temperature)</em>` : ''}</p>
+                This better reflects typical impact for ${dayType}.</p>
                 <p><strong>Uptime Correction:</strong> Values in (parentheses) in the metrics are adjusted by the ${uptimePercentage.toFixed(1)}% uptime of the control signal in the analyzed period for ${dayType}.</p>
                 <p class="caption" style="font-size:0.8em;"><strong>Note about faded bars:</strong> Faded/transparent bars indicate that either the bar itself, or its corresponding ON/OFF counterpart in the same temperature bin, has fewer than ${MIN_SAMPLES_PER_BIN} hourly samples. Such bins are excluded from overall average calculations, which only use bins that have sufficient samples (${MIN_SAMPLES_PER_BIN}+ hours) for both ON and OFF states to ensure robust comparisons.</p>
             `;
