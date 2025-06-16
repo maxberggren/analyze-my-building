@@ -421,7 +421,7 @@
                         <label for="signalForAnalysisSelect">Select Signal for Temperature Analysis:</label>
                         <select id="signalForAnalysisSelect"></select>
                         
-                        <!-- New multiple select for averaging signals -->
+                        <!-- Multiple select for averaging signals -->
                         <div id="averageSignalsContainer" style="display: none; margin-top: 10px;">
                             <label for="averageSignalsSelect">Select signals to average:</label>
                             <select id="averageSignalsSelect" multiple size="6" style="width: 100%; margin-bottom: 10px;"></select>
@@ -438,12 +438,19 @@
                     <div id="tempDistChart" class="chart-container" style="min-height: 150px;"></div> <!-- For temperature distribution -->
                     <div class="metrics-grid" id="tempAnalysisMetrics"></div>
                     
-                    <!-- Affinity Law Checkbox - New Location -->
-                    <div class="config-section" style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;">
-                        <input type="checkbox" id="applyAffinityLaw" name="applyAffinityLaw" style="margin-right: 5px; vertical-align: middle;">
-                        <label for="applyAffinityLaw" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Apply Affinity Law Correction (for Fan/Pump Pressure signals)</label>
-                        <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">Estimates power change from pressure change using Power ∝ Pressure<sup>1.5</sup>. Check this if analyzing a pressure signal related to fan or pump energy.</span></span>
-                    </div>
+                                <!-- Analysis Corrections Section -->
+            <div class="config-section" style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;">
+                <div style="margin-bottom: 10px;">
+                    <input type="checkbox" id="applyAffinityLaw" name="applyAffinityLaw" style="margin-right: 5px; vertical-align: middle;">
+                    <label for="applyAffinityLaw" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Apply Affinity Law Correction (for Fan/Pump Pressure signals)</label>
+                    <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">Estimates power change from pressure change using Power ∝ Pressure<sup>1.5</sup>. Check this if analyzing a pressure signal related to fan or pump energy.</span></span>
+                </div>
+                <div>
+                    <input type="checkbox" id="normalizeHeatingTemp" name="normalizeHeatingTemp" style="margin-right: 5px; vertical-align: middle;">
+                    <label for="normalizeHeatingTemp" style="font-weight: normal; vertical-align: middle; display: inline-block; margin-bottom: 0;">Normalize set temperatures for heating circuits to 20ºC</label>
+                    <span class="tooltip" style="vertical-align: middle; margin-left: 5px;">(i)<span class="tooltiptext">For heating circuit set temperatures, this will calculate percentage impact relative to the difference from 20ºC, which is a typical indoor temperature target.</span></span>
+                </div>
+            </div>
 
                     <div id="tempAnalysisInterpretation" class="explanation"></div>
                     <div class="explanation" style="margin-top: 20px;">
@@ -1166,8 +1173,17 @@
                 }
             });
 
-            // Add event listener for the new Affinity Law checkbox
+            // Add event listeners for the checkboxes
             document.getElementById('applyAffinityLaw').addEventListener('change', function() {
+                if (document.getElementById('temperatureAnalysisSection').classList.contains('active') && filteredData.length > 0) {
+                    const selectedSignal = document.getElementById('signalForAnalysisSelect').value;
+                    const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
+                    const dayType = activeDayTab ? activeDayTab.dataset.daytype : 'All Days';
+                    performTemperatureAnalysis(filteredData, selectedSignal, dayType);
+                }
+            });
+            
+            document.getElementById('normalizeHeatingTemp').addEventListener('change', function() {
                 if (document.getElementById('temperatureAnalysisSection').classList.contains('active') && filteredData.length > 0) {
                     const selectedSignal = document.getElementById('signalForAnalysisSelect').value;
                     const activeDayTab = document.querySelector('#dayAnalysisTabs button.active');
@@ -1307,6 +1323,7 @@
             tempDistChartDiv.innerHTML = '';
 
             const applyAffinity = document.getElementById('applyAffinityLaw').checked;
+            const normalizeHeatingTemp = document.getElementById('normalizeHeatingTemp').checked;
 
             if (!data || data.length === 0 || !signalName) {
                 chartDiv.innerHTML = "<p>Not enough data or no signal selected for temperature analysis.</p>";
@@ -1396,7 +1413,7 @@
                 return acc;
             }, {});
 
-            const MIN_SAMPLES_PER_BIN = 10; // From Python script
+            const MIN_SAMPLES_PER_BIN = 30; // Increased from 30 to ensure more statistical robustness
 
             for (const key in groupedByBinThenState) {
                 const values = groupedByBinThenState[key];
@@ -1622,7 +1639,17 @@
                 simpleAvgDiff = reliableBinDifferences.reduce((sum, diff) => sum + diff, 0) / reliableBinDifferences.length;
                 const overallReliableOffMean = reliableOffMeansForOverallAvg.reduce((sum, val) => sum + val, 0) / reliableOffMeansForOverallAvg.length;
                 if (overallReliableOffMean !== 0) {
-                    simplePctDiff = (simpleAvgDiff / Math.abs(overallReliableOffMean)) * 100;
+                    if (normalizeHeatingTemp) {
+                        // For heating circuits, normalize to difference from 20ºC
+                        const normalizedDenominator = Math.abs(overallReliableOffMean - 20);
+                        if (normalizedDenominator > 0) {  // Avoid division by zero
+                            simplePctDiff = (simpleAvgDiff / normalizedDenominator) * 100;
+                        } else {
+                            simplePctDiff = 0;  // If OFF mean is exactly 20ºC
+                        }
+                    } else {
+                        simplePctDiff = (simpleAvgDiff / Math.abs(overallReliableOffMean)) * 100;
+                    }
                 }
             }
             originalSimplePctDiff = simplePctDiff; // Store before affinity law
@@ -1641,7 +1668,17 @@
                 });
                 const weightedOverallOffMean = weightedSumOfOffValues / totalWeightForWeightedCalc;
                 if (weightedOverallOffMean !== 0) {
-                    weightedPctDiff = (weightedAvgDiff / Math.abs(weightedOverallOffMean)) * 100;
+                    if (normalizeHeatingTemp) {
+                        // For heating circuits, normalize to difference from 20ºC
+                        const normalizedDenominator = Math.abs(weightedOverallOffMean - 20);
+                        if (normalizedDenominator > 0) {  // Avoid division by zero
+                            weightedPctDiff = (weightedAvgDiff / normalizedDenominator) * 100;
+                        } else {
+                            weightedPctDiff = 0;  // If OFF mean is exactly 20ºC
+                        }
+                    } else {
+                        weightedPctDiff = (weightedAvgDiff / Math.abs(weightedOverallOffMean)) * 100;
+                    }
                 }
             }
             originalWeightedPctDiff = weightedPctDiff; // Store before affinity law
@@ -1698,7 +1735,7 @@
                 <strong>${Math.abs(weightedAvgDiff).toFixed(2)} (${applyAffinity && weightedAffinityPctDiff !== null ? weightedAffinityPctDiff.toFixed(1) + '%' : originalWeightedPctDiff.toFixed(1) + '%'}) ${weightedAvgDiff > 0 ? "higher" : "lower"}</strong>.
                 This better reflects typical impact for ${dayType}.</p>
                 <p><strong>Uptime Correction:</strong> Values in (parentheses) in the metrics are adjusted by the ${uptimePercentage.toFixed(1)}% uptime of the control signal in the analyzed period for ${dayType}.</p>
-                <p class="caption" style="font-size:0.8em;"><strong>Note about faded bars:</strong> Faded/transparent bars indicate that either the bar itself, or its corresponding ON/OFF counterpart in the same temperature bin, has fewer than ${MIN_SAMPLES_PER_BIN} hourly samples. Such bins may not be statistically reliable for direct ON vs. OFF comparison and are generally excluded from overall average calculations (which only use bins reliable for both states).</p>
+                <p class="caption" style="font-size:0.8em;"><strong>Note about faded bars:</strong> Faded/transparent bars indicate that either the bar itself, or its corresponding ON/OFF counterpart in the same temperature bin, has fewer than ${MIN_SAMPLES_PER_BIN} hourly samples. Such bins are excluded from overall average calculations, which only use bins that have sufficient samples (${MIN_SAMPLES_PER_BIN}+ hours) for both ON and OFF states to ensure robust comparisons.</p>
             `;
 
         }
